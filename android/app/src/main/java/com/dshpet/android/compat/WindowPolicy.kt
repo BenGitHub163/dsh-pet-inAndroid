@@ -73,8 +73,13 @@ object WindowPolicy {
         },
         PlanRule { plan, facts ->
             if (!facts.touchRegionReflectable) {
-                // 并集窗口 + 拆触摸窗口（用户认可的方案；单窗口方案已回退，见 HANDOFF ㊾）
-                plan.copy(unionWindow = true, fixedSize = false, splitTouchWindow = true, inflatePx = 0, rule = "split-touch-window")
+                // **包围盒窗口 + 拆触摸窗口**（feature/bbox-window 分支）
+                // 视觉窗口尺寸 = 当前动画非透明包围盒（不是并集），且**不加 NOT_TOUCHABLE**：
+                //   · Android 12+ 会把 NOT_TOUCHABLE 的 overlay 压到 MAXIMUM_OBSCURING_OPACITY(0.8)，
+                //     视觉会一直半透明（实测 SurfaceFlinger alpha=0.799805）；
+                //   · 窗口既然只有人物那么大，"窗口外"天然穿透，不需要 NOT_TOUCHABLE；
+                //   · 触摸窗口仍然独立存在（叠在上面收手势），动画与用户操作继续解耦。
+                plan.copy(unionWindow = false, fixedSize = false, splitTouchWindow = true, inflatePx = 0, rule = "bbox-window-split-touch")
             } else plan
         },
     )

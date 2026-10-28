@@ -1230,10 +1230,11 @@ open class PetOverlayService : Service() {
             }
         }
         params = lp
-        if (windowPlan.splitTouchWindow) {
-            // 收不到 touchableRegion 的系统：视觉窗口不接手势，手势交给下面的小触摸窗口
-            lp.flags = lp.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-        }
+        // **不加 FLAG_NOT_TOUCHABLE**（feature/bbox-window）：
+        // Android 12+ 会把"可点击穿透"的 overlay 窗口压到 MAXIMUM_OBSCURING_OPACITY = 0.8
+        // （实测 SurfaceFlinger alpha=0.799805），视觉上就是"桌宠永远有点透明"。
+        // 现在视觉窗口只有人物包围盒那么大 → 窗口外天然没有窗口，本来就能穿透，
+        // 不需要 NOT_TOUCHABLE；手势交给叠在上面的小触摸窗口（createTouchWindow）。
         android.util.Log.i(
             "DshPetWin",
             "buildWindow size=${w}x${h} screen=${resources.displayMetrics.widthPixels}x${resources.displayMetrics.heightPixels}"
@@ -1360,7 +1361,8 @@ open class PetOverlayService : Service() {
         // 精确按"当前动画的非透明像素包围盒"来定触摸窗口：不再额外加余量。
         // 包围盒来自 frames.json（构建时离线统计的每段动画非透明像素并集），
         // 换动画时由 applyGeometry → syncTouchWindow(relayout=true) 自动更新。
-        val pad = 0
+        // 触摸窗口比人物包围盒四周各外扩 6dp（合计 12dp）：手指落在轮廓边缘也算点到。
+        val pad = (6 * density).toInt()
         val w = (lp.width - insetL - insetR + pad * 2).coerceAtLeast(32)
         val h = (lp.height - insetT - insetB + pad * 2).coerceAtLeast(32)
         val tv = android.view.View(this)
@@ -1397,7 +1399,8 @@ open class PetOverlayService : Service() {
         // 精确按"当前动画的非透明像素包围盒"来定触摸窗口：不再额外加余量。
         // 包围盒来自 frames.json（构建时离线统计的每段动画非透明像素并集），
         // 换动画时由 applyGeometry → syncTouchWindow(relayout=true) 自动更新。
-        val pad = 0
+        // 触摸窗口比人物包围盒四周各外扩 6dp（合计 12dp）：手指落在轮廓边缘也算点到。
+        val pad = (6 * density).toInt()
         val w = (lp.width - insetL - insetR + pad * 2).coerceAtLeast(32)
         val h = (lp.height - insetT - insetB + pad * 2).coerceAtLeast(32)
         val x = lp.x + insetL - pad
@@ -1556,7 +1559,9 @@ open class PetOverlayService : Service() {
                 pendingGeometryAfterDrag = true
                 if (physMode != null) AppLog.log("SVC", "抛掷飞行中延后几何：$name")
             } else {
-                applyGeometry(geometryFor(name), keepAnchor = true)
+                // 扩窗立即生效（否则新动画会被裁）；缩窗延后 300ms（等新动画首帧出来再缩，
+                // 避免上一帧较宽的边缘被窗口切掉 —— 见 applyGeometryGrowEarlyShrinkLate）
+                applyGeometryGrowEarlyShrinkLate(geometryFor(name))
                 geoCost = SystemClock.uptimeMillis() - t0
             }
             val tVideo = SystemClock.uptimeMillis()
@@ -1583,6 +1588,36 @@ open class PetOverlayService : Service() {
         pendingGeometryAfterDrag = false
         runCatching { applyGeometry(geometryFor(engine.anim), keepAnchor = true) }
             .onFailure { AppLog.log("SVC", "补几何失败：${it.message}") }
+    }
+
+    // ---- 窗口几何"扩早缩晚" ----
+    /** 待应用的"缩窗"几何（等新动画首帧出来再缩） */
+    private var pendingShrinkGeom: PetWindowFactory.Geometry? = null
+    private val applyPendingShrink = Runnable {
+        val g = pendingShrinkGeom
+        pendingShrinkGeom = null
+        if (g != null) runCatching { applyGeometry(g, keepAnchor = true) }
+    }
+
+    /**
+     * 应用窗口几何：**扩大立即生效、缩小延后 300ms**。
+     *
+     * 换动画时新解码器首帧要 35~90ms，这段时间画面还定在上一帧；若立刻把窗口缩到
+     * 新动画的包围盒，上一帧较宽的边缘会被窗口切掉（肉眼是"缺边"）。缩小本身看不见
+     *（变的只是四周透明区），所以延后没有副作用。
+     */
+    private fun applyGeometryGrowEarlyShrinkLate(g: PetWindowFactory.Geometry) {
+        val lp = params
+        val shrinking = lp != null && (g.winW < lp.width || g.winH < lp.height)
+        if (!shrinking) {
+            pendingShrinkGeom = null
+            uiHandler.removeCallbacks(applyPendingShrink)
+            applyGeometry(g, keepAnchor = true)
+            return
+        }
+        pendingShrinkGeom = g
+        uiHandler.removeCallbacks(applyPendingShrink)
+        uiHandler.postDelayed(applyPendingShrink, 300)
     }
 
     // ================================================================ 手势
