@@ -1,6 +1,7 @@
 package com.dshpet.android.pet
 
 import android.content.Context
+import android.graphics.PixelFormat
 import android.graphics.SurfaceTexture
 import android.opengl.EGL14
 import android.opengl.EGLConfig
@@ -14,7 +15,10 @@ import android.os.HandlerThread
 import android.os.Looper
 import android.util.AttributeSet
 import android.util.Log
-import android.view.TextureView
+import android.view.Surface
+import android.view.SurfaceHolder
+import android.view.SurfaceView
+import android.widget.FrameLayout
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
@@ -25,20 +29,21 @@ import java.nio.ByteOrder
 import java.nio.FloatBuffer
 
 /**
- * 桌宠视频渲染层：**TextureView + 自管 EGL**（原来是 GLSurfaceView）。
+ * 桌宠视频渲染层：**一个容器 + 两个 SurfaceView 图层**（alpha 叠加方案）。
  *
- * 为什么换（真机实测驱动）：
- *  - GLSurfaceView 会创建**独立的子 surface 层**，HyperOS 会把这种悬浮窗按 **0.8 alpha** 合成
- *    （`dumpsys window` 里 `mAttrs alpha=0.8` / `mShownAlpha=0.8`，而我们下发的
- *    `LayoutParams.alpha` 明确是 1.0）→ 肉眼就是"不透明度 100% 仍然有点透"。
- *    TextureView 把画面画进**窗口自己的图层**，没有子 surface 层 → 不再被降 alpha。
- *  - 顺带消掉"子 surface 出界/重分配"那一类合成问题（撞边闪现）。
+ * 背景（Android 12+ `FLAG_NOT_TOUCHABLE` 的规则）：可点击穿透的悬浮窗会被系统压到
+ * `MAXIMUM_OBSCURING_OPACITY = 0.8`（实测 SurfaceFlinger `alpha=0.799805`）。
+ * 这个限制是**按窗口图层**算的，而 SurfaceView 的 surface 是**独立子图层** —— 两个子图层
+ * 各自被压 0.8，叠在一起按 alpha 合成：1-(1-0.8)² = **0.96**，视觉上几乎等于不透明。
  *
- * 两条 SurfaceTexture：
- *  1. [videoSt]：ExoPlayer 解码输出 → 作为 `GL_TEXTURE_EXTERNAL_OES` 采样（数据源）；
- *  2. [viewSt] ：TextureView 自己的 SurfaceTexture（我们 EGL 的**渲染目标**）。
+ * 结构：
+ *  - 一个 ExoPlayer（唯一解码器）→ [videoSt]（外部纹理采样源）；
+ *  - 一个 EGL context，渲染到 [outA]/[outB] 两个 SurfaceView 各自的 EGLSurface；
+ *    每帧 `updateTexImage()` **只调一次**，然后把同一个四边形画到两个目标上（不会两路解码器跑偏）。
+ *
+ * 对外 API 与之前完全一致（play/setMirror/setContentAlpha/setPlaybackSpeed/pause/resume/…）。
  */
-class PetVideoView(context: Context) : TextureView(context), TextureView.SurfaceTextureListener {
+class PetVideoView(context: Context) : FrameLayout(context) {
 
     /** XML 布局 inflate 需要 (Context, AttributeSet) 构造函数 */
     constructor(context: Context, attrs: AttributeSet?) : this(context)
@@ -59,10 +64,12 @@ class PetVideoView(context: Context) : TextureView(context), TextureView.Surface
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
-
-    /** 渲染线程：所有 EGL/GL 调用都在这条线程上 */
-    private val glThread = HandlerThread("pet-gltx").apply { start() }
+    private val glThread = HandlerThread("pet-glstack").apply { start() }
     private val glHandler = Handler(glThread.looper)
+
+    // ---- 两个输出图层（各自是独立合成图层，alpha 会各自被压 → 叠加后 ~0.96）----
+    private val outA = SurfaceView(context).apply { holder.setFormat(PixelFormat.TRANSLUCENT) }
+    private val outB = SurfaceView(context).apply { holder.setFormat(PixelFormat.TRANSLUCENT) }
 
     // ---- 播放状态 ----
     private var listener: Listener? = null
@@ -77,18 +84,16 @@ class PetVideoView(context: Context) : TextureView(context), TextureView.Surface
     private var gpuInfo = "unknown"
     private var brokenReported = false
 
-    // ---- GL 资源 ----
+    // ---- GL / EGL ----
     private var eglDisplay: EGLDisplay = EGL14.EGL_NO_DISPLAY
     private var eglContext: EGLContext = EGL14.EGL_NO_CONTEXT
-    private var eglSurface: EGLSurface = EGL14.EGL_NO_SURFACE
-
-    /** 渲染目标：TextureView 自己的 SurfaceTexture */
-    @Volatile
-    private var viewSt: SurfaceTexture? = null
+    private var eglConfig: EGLConfig? = null
+    /** 每个输出 surface 一个 EGLSurface（渲染目标） */
+    private val targets = LinkedHashMap<Surface, EGLSurface>()
 
     /** 采样源：ExoPlayer 解码输出 */
     private var videoSt: SurfaceTexture? = null
-    private var videoSurface: android.view.Surface? = null
+    private var videoSurface: Surface? = null
     private var textureId = 0
     private var program = 0
     private var uTexLoc = 0
@@ -98,7 +103,6 @@ class PetVideoView(context: Context) : TextureView(context), TextureView.Surface
     private var mirror = false
     private val stMatrix = FloatArray(16)
 
-    /** 画面整体不透明度（0..1），走着色器 uniform（窗口 alpha 保持 1） */
     @Volatile
     private var contentAlpha = 1f
 
@@ -140,139 +144,141 @@ class PetVideoView(context: Context) : TextureView(context), TextureView.Surface
     }
 
     init {
-        // TextureView 默认不透明 → 必须关掉，否则窗口里的透明区会变成黑的
-        isOpaque = false
-        surfaceTextureListener = this
+        addView(outA, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        addView(outB, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        outA.holder.addCallback(SurfaceCb())
+        outB.holder.addCallback(SurfaceCb())
     }
 
     fun setListener(l: Listener) {
         listener = l
     }
 
-    // ================================================================ TextureView 回调
+    // ================================================================ 输出 surface 生命周期
 
-    override fun onSurfaceTextureAvailable(st: SurfaceTexture, width: Int, height: Int) {
-        viewSt = st
-        glHandler.post { initGl(width, height) }
-    }
+    private inner class SurfaceCb : SurfaceHolder.Callback {
+        override fun surfaceCreated(holder: SurfaceHolder) {
+            val s = holder.surface
+            glHandler.post { addTarget(s) }
+        }
 
-    override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, width: Int, height: Int) {
-        glHandler.post {
-            if (eglDisplay == EGL14.EGL_NO_DISPLAY) return@post
-            runCatching { GLES20.glViewport(0, 0, width.coerceAtLeast(1), height.coerceAtLeast(1)) }
-            requestDraw()
+        override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+            glHandler.post { addTarget(holder.surface) }
+        }
+
+        override fun surfaceDestroyed(holder: SurfaceHolder) {
+            val s = holder.surface
+            glHandler.post { removeTarget(s) }
         }
     }
 
-    override fun onSurfaceTextureDestroyed(st: SurfaceTexture): Boolean {
-        viewSt = null
-        glHandler.post { releaseGl() }
-        return true
-    }
-
-    override fun onSurfaceTextureUpdated(st: SurfaceTexture) = Unit
-
-    // ================================================================ GL 初始化 / 释放
-
-    private fun initGl(w0: Int, h0: Int) {
-        val st = viewSt ?: return
+    /** 给某个输出 surface 建 EGLSurface（必要时先建 context），并加入渲染目标 */
+    private fun addTarget(surface: Surface) {
+        if (!surface.isValid) return
         try {
-            eglDisplay = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
-            if (eglDisplay == EGL14.EGL_NO_DISPLAY) throw IllegalStateException("eglGetDisplay 失败")
-            val ver = IntArray(2)
-            if (!EGL14.eglInitialize(eglDisplay, ver, 0, ver, 1)) throw IllegalStateException("eglInitialize 失败")
-            val cfgAttrs = intArrayOf(
-                EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
-                EGL14.EGL_RED_SIZE, 8, EGL14.EGL_GREEN_SIZE, 8,
-                EGL14.EGL_BLUE_SIZE, 8, EGL14.EGL_ALPHA_SIZE, 8,
-                EGL14.EGL_NONE,
+            ensureContext(surface)
+            if (targets.containsKey(surface)) return
+            val es = EGL14.eglCreateWindowSurface(
+                eglDisplay, eglConfig, surface, intArrayOf(EGL14.EGL_NONE), 0,
             )
-            val configs = arrayOfNulls<EGLConfig>(1)
-            val num = IntArray(1)
-            if (!EGL14.eglChooseConfig(eglDisplay, cfgAttrs, 0, configs, 0, 1, num, 0) || num[0] <= 0) {
-                throw IllegalStateException("eglChooseConfig 失败")
-            }
-            val config = configs[0] ?: throw IllegalStateException("config=null")
-            eglContext = EGL14.eglCreateContext(
-                eglDisplay, config, EGL14.EGL_NO_CONTEXT,
-                intArrayOf(EGL14.EGL_CONTEXT_CLIENT_VERSION, 2, EGL14.EGL_NONE), 0,
-            )
-            if (eglContext == EGL14.EGL_NO_CONTEXT) throw IllegalStateException("eglCreateContext 失败")
-            eglSurface = EGL14.eglCreateWindowSurface(eglDisplay, config, st, intArrayOf(EGL14.EGL_NONE), 0)
-            if (eglSurface == EGL14.EGL_NO_SURFACE) throw IllegalStateException("eglCreateWindowSurface 失败")
-            if (!EGL14.eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext)) {
-                throw IllegalStateException("eglMakeCurrent 失败")
-            }
-            gpuInfo = runCatching {
-                val r = GLES20.glGetString(GLES20.GL_RENDERER) ?: "?"
-                val v = GLES20.glGetString(GLES20.GL_VENDOR) ?: "?"
-                val ver2 = GLES20.glGetString(GLES20.GL_VERSION) ?: "?"
-                "$r|$v|$ver2"
-            }.getOrDefault("unknown")
-
-            GLES20.glClearColor(0f, 0f, 0f, 0f)
-            // 着色器：正常版失败 → 丢掉驱动编译缓存 → 换"最保守版"重来
-            program = createProgram(VERTEX_SHADER, FRAGMENT_SHADER, "normal")
-            if (program == 0) {
-                runCatching { GLES20.glReleaseShaderCompiler() }
-                program = createProgram(VERTEX_SHADER, FRAGMENT_SHADER_SIMPLE, "simple")
-            }
-            if (program == 0) {
-                reportBroken(RenderStage.SHADER, "compile-or-link-failed", "texture-view")
+            if (es == null || es == EGL14.EGL_NO_SURFACE) {
+                com.dshpet.android.util.AppLog.log("GL", "eglCreateWindowSurface 失败（目标数=${targets.size}）")
                 return
             }
-            uTexLoc = GLES20.glGetUniformLocation(program, "uTex")
-            uMirrorLoc = GLES20.glGetUniformLocation(program, "uMirror")
-            uAlphaLoc = GLES20.glGetUniformLocation(program, "uAlpha")
-            uMLoc = GLES20.glGetUniformLocation(program, "uM")
-
-            val ids = IntArray(1)
-            GLES20.glGenTextures(1, ids, 0)
-            textureId = ids[0]
-            GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId)
-            GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
-            GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
-            GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
-            GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
-
-            val vst = SurfaceTexture(textureId)
-            vst.setOnFrameAvailableListener { requestDraw() }
-            videoSt = vst
-            videoSurface = android.view.Surface(vst)
-
-            GLES20.glViewport(0, 0, w0.coerceAtLeast(1), h0.coerceAtLeast(1))
-            ready = true
-            com.dshpet.android.util.AppLog.log(
-                "GL", "textureview ready: gpu=$gpuInfo program=$program view=${w0}x$h0"
-            )
-            mainHandler.post {
-                player.setVideoSurface(videoSurface)
-                pendingPlay?.let { doPlay(it.first, it.second, it.third); pendingPlay = null }
-            }
+            targets[surface] = es
+            com.dshpet.android.util.AppLog.log("GL", "渲染目标 +1 → 共 ${targets.size} 个")
+            requestDraw()
         } catch (e: Throwable) {
-            com.dshpet.android.util.AppLog.log("GL", "initGl 失败: ${e.javaClass.simpleName} ${e.message}")
-            reportBroken(RenderStage.EGL, "textureview-init-failed", e.message ?: "")
+            com.dshpet.android.util.AppLog.log("GL", "addTarget 失败: ${e.javaClass.simpleName} ${e.message}")
+            reportBroken(RenderStage.EGL, "add-target-failed", e.message ?: "")
         }
     }
 
-    private fun releaseGl() {
-        runCatching {
-            if (eglDisplay != EGL14.EGL_NO_DISPLAY) {
-                EGL14.eglMakeCurrent(eglDisplay, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT)
-                if (eglSurface != EGL14.EGL_NO_SURFACE) EGL14.eglDestroySurface(eglDisplay, eglSurface)
-                if (eglContext != EGL14.EGL_NO_CONTEXT) EGL14.eglDestroyContext(eglDisplay, eglContext)
-                EGL14.eglTerminate(eglDisplay)
-            }
+    private fun removeTarget(surface: Surface) {
+        val es = targets.remove(surface) ?: return
+        runCatching { EGL14.eglDestroySurface(eglDisplay, es) }
+        com.dshpet.android.util.AppLog.log("GL", "渲染目标 -1 → 剩 ${targets.size} 个")
+    }
+
+    private fun ensureContext(firstSurface: Surface) {
+        if (eglDisplay != EGL14.EGL_NO_DISPLAY) return
+        eglDisplay = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
+        if (eglDisplay == EGL14.EGL_NO_DISPLAY) throw IllegalStateException("eglGetDisplay 失败")
+        val ver = IntArray(2)
+        if (!EGL14.eglInitialize(eglDisplay, ver, 0, ver, 1)) throw IllegalStateException("eglInitialize 失败")
+        val cfgAttrs = intArrayOf(
+            EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
+            EGL14.EGL_RED_SIZE, 8, EGL14.EGL_GREEN_SIZE, 8,
+            EGL14.EGL_BLUE_SIZE, 8, EGL14.EGL_ALPHA_SIZE, 8,
+            EGL14.EGL_NONE,
+        )
+        val configs = arrayOfNulls<EGLConfig>(1)
+        val num = IntArray(1)
+        if (!EGL14.eglChooseConfig(eglDisplay, cfgAttrs, 0, configs, 0, 1, num, 0) || num[0] <= 0) {
+            throw IllegalStateException("eglChooseConfig 失败")
         }
-        eglSurface = EGL14.EGL_NO_SURFACE
-        eglContext = EGL14.EGL_NO_CONTEXT
-        eglDisplay = EGL14.EGL_NO_DISPLAY
-        ready = false
+        eglConfig = configs[0] ?: throw IllegalStateException("config=null")
+        eglContext = EGL14.eglCreateContext(
+            eglDisplay, eglConfig, EGL14.EGL_NO_CONTEXT,
+            intArrayOf(EGL14.EGL_CONTEXT_CLIENT_VERSION, 2, EGL14.EGL_NONE), 0,
+        )
+        if (eglContext == EGL14.EGL_NO_CONTEXT) throw IllegalStateException("eglCreateContext 失败")
+        // 先用第一个 surface 把 context current 起来，才能编译着色器/建纹理
+        val tmp = EGL14.eglCreateWindowSurface(
+            eglDisplay, eglConfig, firstSurface, intArrayOf(EGL14.EGL_NONE), 0,
+        )
+        if (tmp == EGL14.EGL_NO_SURFACE) throw IllegalStateException("首个 eglCreateWindowSurface 失败")
+        if (!EGL14.eglMakeCurrent(eglDisplay, tmp, tmp, eglContext)) throw IllegalStateException("eglMakeCurrent 失败")
+        targets[firstSurface] = tmp
+
+        gpuInfo = runCatching {
+            val r = GLES20.glGetString(GLES20.GL_RENDERER) ?: "?"
+            val v = GLES20.glGetString(GLES20.GL_VENDOR) ?: "?"
+            val ver2 = GLES20.glGetString(GLES20.GL_VERSION) ?: "?"
+            "$r|$v|$ver2"
+        }.getOrDefault("unknown")
+
+        GLES20.glClearColor(0f, 0f, 0f, 0f)
+        program = createProgram(VERTEX_SHADER, FRAGMENT_SHADER, "normal")
+        if (program == 0) {
+            runCatching { GLES20.glReleaseShaderCompiler() }
+            program = createProgram(VERTEX_SHADER, FRAGMENT_SHADER_SIMPLE, "simple")
+        }
+        if (program == 0) {
+            reportBroken(RenderStage.SHADER, "compile-or-link-failed", "stack")
+            return
+        }
+        uTexLoc = GLES20.glGetUniformLocation(program, "uTex")
+        uMirrorLoc = GLES20.glGetUniformLocation(program, "uMirror")
+        uAlphaLoc = GLES20.glGetUniformLocation(program, "uAlpha")
+        uMLoc = GLES20.glGetUniformLocation(program, "uM")
+
+        val ids = IntArray(1)
+        GLES20.glGenTextures(1, ids, 0)
+        textureId = ids[0]
+        GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId)
+        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
+        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
+        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
+        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
+
+        val vst = SurfaceTexture(textureId)
+        vst.setOnFrameAvailableListener { requestDraw() }
+        videoSt = vst
+        videoSurface = Surface(vst)
+
+        ready = true
+        com.dshpet.android.util.AppLog.log(
+            "GL", "stack ready: gpu=$gpuInfo program=$program targets=${targets.size}"
+        )
+        mainHandler.post {
+            player.setVideoSurface(videoSurface)
+            pendingPlay?.let { doPlay(it.first, it.second, it.third); pendingPlay = null }
+        }
     }
 
     // ================================================================ 播放控制
 
-    /** 播放一段动画。assetPath 形如 "idle/待机呼吸休闲.mp4" */
     fun play(name: String, assetPath: String, speed: Float) {
         if (!ready) {
             pendingPlay = Triple(name, assetPath, speed)
@@ -301,7 +307,6 @@ class PetVideoView(context: Context) : TextureView(context), TextureView.Surface
         }
     }
 
-    /** asset 打不开时的兜底：复制到 filesDir 再按本地文件播（每段只试一次） */
     private fun tryFileFallback(): Boolean {
         val (_, path, speed) = lastPlayed ?: return false
         if (!fileFallbackTried.add(path)) return false
@@ -325,7 +330,6 @@ class PetVideoView(context: Context) : TextureView(context), TextureView.Surface
         }
     }
 
-    /** 播放进度（毫秒），移动插值用 */
     fun currentPositionMs(): Long =
         if (player.duration > 0 && player.duration != androidx.media3.common.C.TIME_UNSET) player.currentPosition else 0L
 
@@ -364,6 +368,21 @@ class PetVideoView(context: Context) : TextureView(context), TextureView.Surface
         mainHandler.postDelayed({ runCatching { glThread.quitSafely() } }, 300)
     }
 
+    private fun releaseGl() {
+        runCatching {
+            if (eglDisplay != EGL14.EGL_NO_DISPLAY) {
+                EGL14.eglMakeCurrent(eglDisplay, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT)
+                targets.values.forEach { runCatching { EGL14.eglDestroySurface(eglDisplay, it) } }
+                if (eglContext != EGL14.EGL_NO_CONTEXT) EGL14.eglDestroyContext(eglDisplay, eglContext)
+                EGL14.eglTerminate(eglDisplay)
+            }
+        }
+        targets.clear()
+        eglContext = EGL14.EGL_NO_CONTEXT
+        eglDisplay = EGL14.EGL_NO_DISPLAY
+        ready = false
+    }
+
     // ================================================================ 绘制
 
     private fun requestDraw() {
@@ -374,60 +393,71 @@ class PetVideoView(context: Context) : TextureView(context), TextureView.Surface
 
     private fun drawOnce() {
         dirty = false
-        if (eglDisplay == EGL14.EGL_NO_DISPLAY || eglSurface == EGL14.EGL_NO_SURFACE) return
+        if (eglDisplay == EGL14.EGL_NO_DISPLAY || eglContext == EGL14.EGL_NO_CONTEXT) return
         val vst = videoSt ?: return
+        if (targets.isEmpty()) return
         try {
-            if (!EGL14.eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext)) return
+            // 找一个可用的目标来 current，才能 updateTexImage
+            val firstTarget = targets.values.firstOrNull() ?: return
+            if (!EGL14.eglMakeCurrent(eglDisplay, firstTarget, firstTarget, eglContext)) return
             try {
                 vst.updateTexImage()
             } catch (e: Throwable) {
-                GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
-                EGL14.eglSwapBuffers(eglDisplay, eglSurface)
+                targets.values.forEach { es ->
+                    runCatching {
+                        EGL14.eglMakeCurrent(eglDisplay, es, es, eglContext)
+                        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
+                        EGL14.eglSwapBuffers(eglDisplay, es)
+                    }
+                }
                 return
             }
             vst.getTransformMatrix(stMatrix)
-            GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
-            GLES20.glUseProgram(program)
-            GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
-            GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId)
-            GLES20.glUniform1i(uTexLoc, 0)
-            GLES20.glUniform1f(uMirrorLoc, if (mirror) 1f else 0f)
-            GLES20.glUniform1f(uAlphaLoc, contentAlpha)
-            GLES20.glUniformMatrix4fv(uMLoc, 1, false, stMatrix, 0)
-            GLES20.glEnableVertexAttribArray(0)
-            GLES20.glVertexAttribPointer(0, 2, GLES20.GL_FLOAT, false, 0, QUAD)
-            GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
-            GLES20.glDisableVertexAttribArray(0)
             framesDrawn++
+            // 同一帧画到每个图层（updateTexImage 只调一次，两个图层内容完全同步）
+            var drawn = 0
+            targets.values.forEach { es ->
+                if (EGL14.eglMakeCurrent(eglDisplay, es, es, eglContext)) {
+                    drawQuad()
+                    if (EGL14.eglSwapBuffers(eglDisplay, es)) drawn++
+                }
+            }
             if (framesDrawn == 90) {
-                // 透明度诊断：读回"人物身体"像素的 alpha（255 = 完全不透明）
                 runCatching {
                     val bb = ByteBuffer.allocateDirect(4)
                     val px = (width * 0.5f).toInt().coerceIn(0, (width - 1).coerceAtLeast(0))
-                    val ys = intArrayOf((height * 0.15f).toInt(), (height * 0.3f).toInt(), (height * 0.45f).toInt())
-                    val sb = StringBuilder()
-                    for (py0 in ys) {
-                        val py = py0.coerceIn(0, (height - 1).coerceAtLeast(0))
-                        GLES20.glReadPixels(px, py, 1, 1, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, bb)
-                        sb.append(" y=$py a=${bb.get(3).toInt() and 0xFF};")
-                    }
-                    com.dshpet.android.util.AppLog.log("GL", "bodyAlpha$sb uAlpha=$contentAlpha")
+                    val py = (height * 0.3f).toInt().coerceIn(0, (height - 1).coerceAtLeast(0))
+                    GLES20.glReadPixels(px, py, 1, 1, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, bb)
+                    com.dshpet.android.util.AppLog.log(
+                        "GL", "bodyAlpha a=${bb.get(3).toInt() and 0xFF} uAlpha=$contentAlpha targets=${targets.size}"
+                    )
                 }
             }
             if (framesDrawn % 150 == 0) {
-                com.dshpet.android.util.AppLog.log("GL", "已渲染 $framesDrawn 帧，firstFrame=$firstFrameRendered name=$currentName")
+                com.dshpet.android.util.AppLog.log(
+                    "GL", "已渲染 $framesDrawn 帧（目标 $drawn 个），firstFrame=$firstFrameRendered name=$currentName"
+                )
             }
-            EGL14.eglSwapBuffers(eglDisplay, eglSurface)
         } catch (e: Throwable) {
-            runCatching {
-                GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
-                EGL14.eglSwapBuffers(eglDisplay, eglSurface)
-            }
             com.dshpet.android.util.AppLog.log("GL", "draw 失败: ${e.javaClass.simpleName} ${e.message}")
         }
     }
 
-    /** 播放就绪后 5 秒仍无首帧 → 记录日志并回报（排查黑屏） */
+    private fun drawQuad() {
+        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
+        GLES20.glUseProgram(program)
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
+        GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId)
+        GLES20.glUniform1i(uTexLoc, 0)
+        GLES20.glUniform1f(uMirrorLoc, if (mirror) 1f else 0f)
+        GLES20.glUniform1f(uAlphaLoc, contentAlpha)
+        GLES20.glUniformMatrix4fv(uMLoc, 1, false, stMatrix, 0)
+        GLES20.glEnableVertexAttribArray(0)
+        GLES20.glVertexAttribPointer(0, 2, GLES20.GL_FLOAT, false, 0, QUAD)
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+        GLES20.glDisableVertexAttribArray(0)
+    }
+
     private fun firstFrameWatchdog(retry: Int = 0) {
         if (firstFrameRendered) return
         mainHandler.postDelayed({
@@ -452,7 +482,6 @@ class PetVideoView(context: Context) : TextureView(context), TextureView.Surface
         }, 5000)
     }
 
-    /** 上报"渲染确定坏了"：固定格式（grep 定责）+ 用户日志 */
     private fun reportBroken(stage: String, reason: String, detail: String = "") {
         if (brokenReported) return
         brokenReported = true
@@ -496,13 +525,11 @@ class PetVideoView(context: Context) : TextureView(context), TextureView.Surface
                 float x = uMirror > 0.5 ? (1.0 - vUV.x) : vUV.x;
                 vec4 rgb = texture2D(uTex, vec2(x * 0.5, vUV.y));
                 float a = texture2D(uTex, vec2(0.5 + x * 0.5, vUV.y)).r;
-                // 输出**预乘 alpha**：SurfaceFlinger 按 premultiplied 合成
                 float av = a * uAlpha;
                 gl_FragColor = vec4(rgb.rgb * av, av);
             }
         """
 
-        /** 保守版：去掉三元表达式（某些驱动对前者编译失败） */
         private const val FRAGMENT_SHADER_SIMPLE = """
             #extension GL_OES_EGL_image_external : require
             precision mediump float;
@@ -520,7 +547,6 @@ class PetVideoView(context: Context) : TextureView(context), TextureView.Surface
             }
         """
 
-        /** 编译 + 链接一套着色器；失败返回 0 */
         private fun createProgram(vertex: String, fragment: String, tag: String): Int {
             val vs = compile(GLES20.GL_VERTEX_SHADER, vertex, tag)
             val fs = compile(GLES20.GL_FRAGMENT_SHADER, fragment, tag)
