@@ -2554,20 +2554,25 @@ open class PetOverlayService : Service() {
         val oldPetBottom = if (keepAnchor) engine.winY + engine.winH - insetB else 0
 
         videoView?.let { v ->
+            // **视频层尺寸 = 窗口尺寸**（不是画布尺寸）：
+            // SurfaceView 的 surface 不会被父窗口裁剪；画布比窗口大时人物会"溢出窗口"，
+            // 表现就是"脱离窗口中心"（切小尺寸时尤其明显，因为画布/窗口比例变了）。
+            // 改成窗口大小后，画布交给 GL viewport 摆在窗口内的 (offsetX, offsetY)，永远不越界。
             val vlp = (v.layoutParams as? android.widget.FrameLayout.LayoutParams)
-                ?: android.widget.FrameLayout.LayoutParams(g.canvasW, g.canvasH)
-            vlp.width = g.canvasW
-            vlp.height = g.canvasH
+                ?: android.widget.FrameLayout.LayoutParams(g.winW, g.winH)
+            vlp.width = g.winW
+            vlp.height = g.winH
             v.layoutParams = vlp
-            v.translationX = g.offsetX.toFloat()
-            v.translationY = g.offsetY.toFloat()
+            v.translationX = 0f
+            v.translationY = 0f
+            v.setVideoRect(g.canvasW, g.canvasH, g.offsetX, g.offsetY)
             v.requestLayout()
-            // 静态兜底图（渲染坏掉时才存在）跟着走同一套几何，否则换动画/改档位后会错位
+            // 静态兜底图是普通 ImageView（会被窗口裁剪），照旧用画布尺寸 + 平移
             staticFallback?.let { f ->
                 runCatching {
                     f.layoutParams = android.widget.FrameLayout.LayoutParams(g.canvasW, g.canvasH)
-                    f.translationX = v.translationX
-                    f.translationY = v.translationY
+                    f.translationX = g.offsetX.toFloat()
+                    f.translationY = g.offsetY.toFloat()
                     f.scaleX = v.scaleX
                     f.scaleY = v.scaleY
                 }

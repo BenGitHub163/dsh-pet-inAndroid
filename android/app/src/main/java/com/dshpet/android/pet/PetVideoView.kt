@@ -106,6 +106,21 @@ class PetVideoView(context: Context) : FrameLayout(context) {
     @Volatile
     private var contentAlpha = 1f
 
+    /** 视频画布在窗口里的矩形（像素）：GL viewport 用它，把画布精确贴在窗口内，surface 不再超出窗口 */
+    @Volatile private var rectW = 0
+    @Volatile private var rectH = 0
+    @Volatile private var rectX = 0
+    @Volatile private var rectY = 0
+
+    /** 由服务在 applyGeometry 里调用：画布尺寸 + 画布相对窗口左上角的偏移 */
+    fun setVideoRect(canvasW: Int, canvasH: Int, offsetX: Int, offsetY: Int) {
+        rectW = canvasW.coerceAtLeast(1)
+        rectH = canvasH.coerceAtLeast(1)
+        rectX = offsetX
+        rectY = offsetY
+        requestDraw()
+    }
+
     @Volatile
     private var dirty = false
     private val drawRunnable = Runnable { drawOnce() }
@@ -418,6 +433,12 @@ class PetVideoView(context: Context) : FrameLayout(context) {
             var drawn = 0
             targets.values.forEach { es ->
                 if (EGL14.eglMakeCurrent(eglDisplay, es, es, eglContext)) {
+                    // 画布用 viewport 摆在窗口内（y 从底部算）
+                    val vw = if (rectW > 0) rectW else width
+                    val vh = if (rectH > 0) rectH else height
+                    val vx = if (rectW > 0) rectX else 0
+                    val vy = if (rectW > 0) (height - rectY - vh) else 0
+                    GLES20.glViewport(vx, vy, vw, vh)
                     drawQuad()
                     if (EGL14.eglSwapBuffers(eglDisplay, es)) drawn++
                 }
