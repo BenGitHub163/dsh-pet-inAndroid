@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  读屏服务配置。
+  canRetrieveWindowContent=true 是为了能取到界面文字；
+  代码里对 isPassword 节点做了整棵子树跳过，密码/验证码不会被朗读或缓存。
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
+    android:accessibilityFeedbackType="feedbackSpoken"
+    android:accessibilityFlags="flagRetrieveInteractiveWindows|flagReportViewIds"
+    android:canRetrieveWindowContent="true"
+    android:description="@string/pet_a11y_desc"
+    android:notificationTimeout="300"
+    android:summary="@string/pet_a11y_summary" />

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pet_a11y_desc">桌宠读屏：把屏幕上的文字用本地语音读出来，帮助看不清屏幕的用户使用手机。密码框会被自动跳过。</string>
+    <string name="pet_a11y_summary">本地朗读，不上传屏幕内容</string>
+</resources>

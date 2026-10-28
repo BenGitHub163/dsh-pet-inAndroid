@@ -1,0 +1,300 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- 悬浮窗（桌宠显示在任意应用之上） -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <!-- 语音对话：录音（测试语音闭环用） -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- 表情感知：只在用户点"看一眼我"时抓一帧，不后台开机、不落盘 -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <!-- 环境感知：大致位置（用户问"我在哪"时用；无权限则自动降级） -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- 环境感知：前台应用（需用户在系统设置里授予"使用情况访问"；未授予则降级） -->
+    <uses-permission
+        android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
+    <!-- 应用画像：列出已安装应用（Android 11+ 必须声明，否则只能看到少数应用） -->
+    <uses-permission
+        android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
+    <!-- 前台服务常驻 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- 麦克风前台服务类型：桌宠悬浮在别的应用之上时，只有带 microphone 类型的前台服务
+         才拿得到麦克风；否则识别器会一直 ERROR_AUDIO/ERROR_CLIENT，表现为"收音断断续续" -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- 通知（Android 13+ 需运行时申请） -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 开机自启 -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- 网络（AI 对话 / 余额 / 更新检查） -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Agent 联动事件目录（Android 11+ 读共享存储非媒体文件需「所有文件访问」；
+         也可改用设置里的 SAF 目录选择，则无需此权限） -->
+    <uses-permission
+        android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <!-- 忽略电池优化引导 -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!-- Android 11+ 包可见性：不声明这个，TextToSpeech 初始化会失败（找不到系统 TTS 引擎） -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
+
+    <application
+        android:name=".PetApp"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.DshPet">
+
+        <!-- 设置主界面。真实入口通过两个 activity-alias 暴露：
+             「隐藏后台」开启时只启用 LauncherHidden（excludeFromRecents），
+             关闭时只启用 LauncherNormal —— 运行时切换，同一时刻只有一个入口生效。 -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="false" />
+
+        <activity-alias
+            android:name=".LauncherNormal"
+            android:targetActivity=".MainActivity"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.DshPet">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".LauncherHidden"
+            android:targetActivity=".MainActivity"
+            android:exported="true"
+            android:enabled="false"
+            android:excludeFromRecents="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.DshPet">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- AI 对话界面 -->
+        <activity
+            android:name=".chat.ChatActivity"
+            android:exported="false"
+            android:theme="@style/Theme.DshPet" />
+
+        <!-- 内置日志查看器 -->
+        <activity
+            android:name=".LogActivity"
+            android:exported="false"
+            android:theme="@style/Theme.DshPet" />
+
+        <!-- 桌宠悬浮窗前台服务 -->
+        <service
+            android:name=".pet.PetOverlayService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse|microphone"
+            tools:targetApi="34">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="desktop_pet_overlay" />
+        </service>
+
+        <!-- 多开实例载体（Android 同一 Service 类仅一个对象） -->
+        <service
+            android:name=".pet.PetOverlayService1"
+            android:exported="false"
+            android:foregroundServiceType="specialUse|microphone"
+            tools:targetApi="34">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="desktop_pet_overlay" />
+        </service>
+        <service
+            android:name=".pet.PetOverlayService2"
+            android:exported="false"
+            android:foregroundServiceType="specialUse|microphone"
+            tools:targetApi="34">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="desktop_pet_overlay" />
+        </service>
+        <service
+            android:name=".pet.PetOverlayService3"
+            android:exported="false"
+            android:foregroundServiceType="specialUse|microphone"
+            tools:targetApi="34">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="desktop_pet_overlay" />
+        </service>
+
+        <service
+            android:name=".pet.PetOverlayService4"
+            android:exported="false"
+            android:foregroundServiceType="specialUse|microphone"
+            tools:targetApi="34">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="desktop_pet_overlay" />
+        </service>
+
+        <service
+            android:name=".pet.PetOverlayService5"
+            android:exported="false"
+            android:foregroundServiceType="specialUse|microphone"
+            tools:targetApi="34">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="desktop_pet_overlay" />
+        </service>
+
+        <service
+            android:name=".pet.PetOverlayService6"
+            android:exported="false"
+            android:foregroundServiceType="specialUse|microphone"
+            tools:targetApi="34">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="desktop_pet_overlay" />
+        </service>
+
+        <service
+            android:name=".pet.PetOverlayService7"
+            android:exported="false"
+            android:foregroundServiceType="specialUse|microphone"
+            tools:targetApi="34">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="desktop_pet_overlay" />
+        </service>
+
+        <service
+            android:name=".pet.PetOverlayService8"
+            android:exported="false"
+            android:foregroundServiceType="specialUse|microphone"
+            tools:targetApi="34">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="desktop_pet_overlay" />
+        </service>
+
+        <service
+            android:name=".pet.PetOverlayService9"
+            android:exported="false"
+            android:foregroundServiceType="specialUse|microphone"
+            tools:targetApi="34">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="desktop_pet_overlay" />
+        </service>
+
+        <!-- 开机自启（默认 disabled：只有设置里打开"开机自启"才会被 PetApp/MainActivity 启用） -->
+        <receiver
+            android:name=".pet.BootReceiver"
+            android:exported="true"
+            android:enabled="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <!-- 国产 ROM 的"快速开机"：只收 BOOT_COMPLETED 会漏 -->
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+                <!-- 覆盖安装 / 升级后自动恢复桌宠 -->
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 语音链路自测（开发期用，正式发版前删除） -->
+        <activity
+            android:name=".voice.VoiceTestActivity"
+            android:exported="false"
+            android:label="语音自测"
+            android:theme="@android:style/Theme.DeviceDefault.Light" />
+
+        <activity
+            android:name=".voice.VoiceLoopActivity"
+            android:exported="false"
+            android:label="语音对话（测试）"
+            android:theme="@android:style/Theme.DeviceDefault.Light" />
+
+
+        <!-- 正式版设置页：用户填 Key、调音色、管理记忆、进调试台 -->
+        <activity
+            android:name=".voice.ui.PetSettingsActivity"
+            android:exported="false"
+            android:label="语音与记忆设置"
+            android:theme="@android:style/Theme.DeviceDefault.Light" />
+
+        <!-- 桌宠动画测试台：列出 91 段动画，点一条让悬浮窗里的桌宠播放（测试 → 动画测试） -->
+        <activity
+            android:name=".pet.PetAnimTestActivity"
+            android:exported="false"
+            android:label="桌宠动画测试"
+            android:theme="@android:style/Theme.DeviceDefault.Light" />
+
+        <!-- 自言自语台词管理：15 个格子，逐条保存/删除（外观 → 自言自语 → 管理台词） -->
+        <activity
+            android:name=".pet.SelfTalkTextsActivity"
+            android:exported="false"
+            android:label="自言自语台词"
+            android:theme="@android:style/Theme.DeviceDefault.Light"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- 「桌宠跑着跑着就没了」的兜底：15 分钟一次的持久化 JobService，服务不在就重新拉起 -->
+        <service
+            android:name=".pet.PetWatchdogJob"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
+        <!-- 读屏（无障碍）：为视障用户本地朗读屏幕文字；密码框整棵子树跳过，文字默认不上传 -->
+        <service
+            android:name=".voice.accessibility.PetAccessibilityService"
+            android:exported="true"
+            android:label="桌宠读屏"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/pet_accessibility" />
+        </service>
+
+        <!-- 媒体感知：只读"正在播放什么"，不读取任何消息内容（onNotificationPosted 空实现） -->
+        <service
+            android:name=".voice.notify.PetNotificationListener"
+            android:exported="true"
+            android:label="桌宠·媒体感知"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <receiver
+            android:name=".voice.VoiceTestReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.dshpet.android.VOICE_TEST" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>
