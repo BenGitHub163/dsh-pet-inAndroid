@@ -383,28 +383,30 @@ class PetEngine(
         const val DRAG_THRESHOLD = 5
 
         // 抛掷物理（与原 physics.py 一致，单位 dp/s）
-        const val GRAVITY = 1400.0
+        const val GRAVITY = 2400.0
         const val RESTITUTION = 0.78
         const val GROUND_FRICTION = 2.5
         const val REST_VY = 40.0
         const val REST_VX = 15.0
-        const val MAX_THROW_SPEED = 3600.0
+        const val MAX_THROW_SPEED = 6000.0
         const val DEAD_ZONE_SPEED = 500.0
         const val TRAIL_KEEP_SEC = 0.15
         const val RELEASE_WINDOW_SEC = 0.12
         const val RELEASE_STALE_SEC = 0.15
         const val MIN_SPAN_SEC = 0.02
         const val SEG_MIN_DT = 0.008
-        const val PEAK_WEIGHT = 0.5
+        const val PEAK_WEIGHT = 0.65
         const val ACCEL_REF = 8000.0
-        const val ACCEL_GAIN_MAX = 0.6
+        const val ACCEL_GAIN_MAX = 0.9
 
         fun softClampSpeed(speed: Double, cap: Double = MAX_THROW_SPEED): Double =
             if (speed <= 0) 0.0 else cap * (1.0 - exp(-speed / cap))
 
         /** 由拖拽轨迹估算松手初速（1:1 移植 estimate_release_velocity） */
         fun estimateReleaseVelocity(
-            trail: List<Triple<Long, Float, Float>>, nowMs: Long
+            trail: List<Triple<Long, Float, Float>>, nowMs: Long,
+            /** 速度上限：传「甩出力度」档位的 cap；null = 用默认 [MAX_THROW_SPEED] */
+            cap: Double? = null,
         ): Pair<Double, Double> {
             if (trail.isEmpty()) return 0.0 to 0.0
             if (nowMs - trail.last().first > (RELEASE_STALE_SEC * 1000).toLong()) return 0.0 to 0.0
@@ -439,7 +441,7 @@ class PetEngine(
             }
             val speed = (1.0 - PEAK_WEIGHT) * baseSpeed + PEAK_WEIGHT * peakSpeed
             val gain = 1.0 + kotlin.math.min(kotlin.math.max(accel, 0.0) / ACCEL_REF, 1.0) * ACCEL_GAIN_MAX
-            val finalSpeed = softClampSpeed(speed * gain)
+            val finalSpeed = softClampSpeed(speed * gain, cap ?: MAX_THROW_SPEED)
             if (baseSpeed < 1e-6) return 0.0 to finalSpeed
             return (baseVx / baseSpeed * finalSpeed) to (baseVy / baseSpeed * finalSpeed)
         }

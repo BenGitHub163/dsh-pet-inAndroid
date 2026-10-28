@@ -153,13 +153,13 @@ open class PetOverlayService : Service() {
 
         // ---- 甩手机（重力感应开着时）----
         /** 合加速度相对 1g 的偏差超过这么多（m/s²）就算"甩了一下"：6 ≈ 0.6g（太小会被走路/放桌上误触发） */
-        private const val SHAKE_MIN_IMPACT = 6.0
+        private const val SHAKE_MIN_IMPACT = 4.5
         /** 两次甩动之间至少隔这么久（毫秒） */
         private const val SHAKE_COOLDOWN_MS = 350L
         /** 冲击强度 → 初速的换算（px/s 每 m/s²）：6 → 3120，10 → 5200（再受「甩出力度」档位上限约束） */
-        private const val SHAKE_SPEED_PER_G = 520.0
+        private const val SHAKE_SPEED_PER_G = 760.0
         /** 甩动至少给这么多初速，保证"看得到"（轻甩也能把桌宠弹起来） */
-        private const val SHAKE_MIN_SPEED = 1500.0
+        private const val SHAKE_MIN_SPEED = 2200.0
 
         /**
          * 右下角允许的出屏比例（只作用于右、下两边）。
@@ -834,6 +834,11 @@ open class PetOverlayService : Service() {
         // 点击台词绑定（上游 v4.1.0）
         curClickTalk = config.clickTalk()
         curThrowStrength = config.throwStrength()
+    // 启动时把影响手感的开关打一行（排障用：拖动物理关了就没有抛掷，"甩不出去"先看这里）
+    AppLog.log(
+        "SVC",
+        "手感开关：拖动物理=$curPhysics 重力感应=$curGravitySensor 甩出力度=$curThrowStrength 锁定位置=$curLock",
+    )
 
         // 行为参数：移动概率/散步距离（设置可调）
         val moveProb = config.moveProbability()
@@ -1828,7 +1833,13 @@ open class PetOverlayService : Service() {
                         }
                         if (curPhysics) {
                             val now = SystemClock.uptimeMillis()
-                            val (vx, vy) = PetEngine.estimateReleaseVelocity(trail, now)
+                            val (vx, vy) = PetEngine.estimateReleaseVelocity(
+                                trail, now, cap = PetEngine.throwSpeedCap(curThrowStrength)
+                            )
+                            AppLog.log(
+                                "THROW",
+                                "松手初速 v=${hypot(vx, vy).toInt()}（档位 $curThrowStrength，上限 ${PetEngine.throwSpeedCap(curThrowStrength).toInt()}）",
+                            )
                             if (hypot(vx, vy) < PetEngine.DEAD_ZONE_SPEED) {
                                 physMode = null
                                 engine.onDragEnd()
@@ -2060,9 +2071,9 @@ open class PetOverlayService : Service() {
             // **撞墙掉能量**：不加这一条，120Hz 屏幕上高能抛掷会贴着墙"哒哒哒"弹个不停
             //（用户看到的就是"撞到边缘后一直闪"）。反弹次数越多衰减越狠，保证几秒内落停。
             val lose = when {
-                throwBounces > 12 -> 0.45
-                throwBounces > 6 -> 0.62
-                else -> 0.80
+                throwBounces > 12 -> 0.55
+                throwBounces > 6 -> 0.72
+                else -> 0.86
             }
             physVel = doubleArrayOf(physVel[0] * lose, physVel[1] * lose)
             if (m != null) { m.vx = physVel[0]; m.vy = physVel[1]; pushedVx = physVel[0]; pushedVy = physVel[1] }
@@ -2214,7 +2225,7 @@ open class PetOverlayService : Service() {
                     val az = e.values[2]
                     // 低通（0.4）：抖动会被磨平，转动手机时约 0.12s 跟上
                     // （原来是 0.25 ≈ 0.2s，用户反馈"普通场景下太慢了"）
-                    val k = 0.4
+                    val k = 0.55
                     accelX = accelX * (1 - k) + ax * k
                     accelY = accelY * (1 - k) + ay * k
                     // 慢速重力估计（k=0.06 ≈ 0.3s）：只给"甩动方向"用。
