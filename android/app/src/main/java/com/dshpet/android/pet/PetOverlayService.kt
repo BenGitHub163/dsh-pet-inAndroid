@@ -1630,8 +1630,9 @@ open class PetOverlayService : Service() {
             runCatching {
                 l.state.collect { st ->
                     uiHandler.post {
-                        voiceBadge.update(st)
-                        voiceBadge.followWindow(engine.winX, engine.winY, engine.winW, engine.winH)
+                        // 一次性把"状态 + 桌宠窗口矩形"传进去：badge 会在 addView **之前**
+                        // 用这个矩形算好位置，避免先在左上角闪一下再跳到桌宠头上
+                        voiceBadge.update(st, engine.winX, engine.winY, engine.winW, engine.winH)
                     }
                 }
             }.onFailure { AppLog.log("VOICE", "状态收集失败：${it.message}") }
