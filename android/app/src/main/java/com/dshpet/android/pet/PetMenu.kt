@@ -10,6 +10,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -66,6 +67,7 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dshpet.android.data.PetConfig
@@ -193,7 +195,7 @@ class PetMenu(
         var lock by remember { mutableStateOf(service.curLock) }
         var physics by remember { mutableStateOf(service.curPhysics) }
         val blurCfg by cfg.flowBool("blur_enabled", false).collectAsState(initial = false)
-        val blurOn = blurCfg && Build.VERSION.SDK_INT >= 31
+        val blurOn = blurCfg && com.dshpet.android.compat.Platform.blurSupported
         fun run(action: suspend () -> Unit) {
             // 用服务级作用域：onDismiss() 会立刻移除窗口 → ComposeView 被 dispose →
             // rememberCoroutineScope 取消，之前写在这里的 cfg.setXxx() 全被掐掉（菜单设置无效的根因）
@@ -208,10 +210,16 @@ class PetMenu(
             modifier = Modifier
                 .width(menuW)
                 .heightIn(max = menuMaxH)
-                .mdBlur(blurOn, radius = 22),
+                // 先按圆角裁剪、再模糊：mdBlur 用的是 BlurredEdgeTreatment.Unbounded，
+                // 直接 blur 会让模糊像素溢出到四个圆角外面（看起来就是"圆角外不透明"）。
+                .clip(RoundedCornerShape(16.dp))
+                .mdBlur(blurOn, radius = 22)
+                // 阴影降到 0 后用一条 1dp 描边保住层次（原来的 10dp 阴影在浅色壁纸上像一圈灰框）
+                .border(1.dp, Color(0x14000000), RoundedCornerShape(16.dp)),
             shape = RoundedCornerShape(16.dp),
             color = if (blurOn) Color(0xE6FFFFFF) else MaterialTheme.colorScheme.surface,
-            shadowElevation = 10.dp,
+            // **0dp**：10dp 阴影会在圆角外形成灰色光晕，浅色/花壁纸上很像"圆角外不透明"
+            shadowElevation = 0.dp,
             tonalElevation = 2.dp,
         ) {
             // 外层 Column **不滚动**：标题栏（"小肥鱼" + 关闭按钮）固定在最上面，

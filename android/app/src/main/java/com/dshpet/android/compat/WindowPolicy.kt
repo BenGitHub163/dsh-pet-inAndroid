@@ -23,14 +23,19 @@ data class PlatformFacts(
     val touchRegionReflectable: Boolean,
     /** 是否支持 `fitInsetsTypes = 0`（Android 11+；用于让窗口坐标=整屏坐标） */
     val fitInsetsSupported: Boolean,
+    /**
+     * 是否支持真毛玻璃（`Modifier.blur` / `RenderEffect`，Android 12+）。
+     * 业务代码只判断这个能力，不要直接写 `SDK_INT >= 31`。
+     */
+    val blurSupported: Boolean = sdk >= 31,
     /** GPU 渲染器名（诊断用，不参与决策） */
     val gpu: String = "unknown",
 ) {
     /** 固定格式，便于 grep：`Compat/1 sdk=36 touchRegion=false splitTouch=true ...` */
     fun logLine(plan: WindowPlan): String =
         "Compat/1 sdk=$sdk touchRegion=$touchRegionReflectable fitInsets=$fitInsetsSupported " +
-            "union=${plan.unionWindow} fixed=${plan.fixedSize} splitTouch=${plan.splitTouchWindow} " +
-            "inflate=${plan.inflatePx} rule=${plan.rule} gpu=$gpu"
+            "blur=$blurSupported union=${plan.unionWindow} fixed=${plan.fixedSize} " +
+            "splitTouch=${plan.splitTouchWindow} inflate=${plan.inflatePx} rule=${plan.rule} gpu=$gpu"
 }
 
 /**

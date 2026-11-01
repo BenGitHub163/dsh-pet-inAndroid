@@ -199,7 +199,7 @@ private fun SettingsScreen() {
     var tab by remember { mutableIntStateOf(0) }
     val tabs = listOf("常规", "桌宠", "外观", "AI 对话", "快捷", "关于", "测试")
     val blurCfg by cfg.flowBool("blur_enabled", false).collectAsState(initial = false)
-    val blurOn = blurCfg && Build.VERSION.SDK_INT >= 31
+    val blurOn = blurCfg && com.dshpet.android.compat.Platform.blurSupported
 
     Scaffold(
         topBar = {
@@ -342,16 +342,16 @@ private fun GeneralTab(
     // key 里必须带 autoStartWant：DataStore 的 flow 首帧先给 initial=false，
     // 只按 resumeTick 触发的话，等真值（比如 true）回流时不会再跑一次，接收器就会被误关掉。
     LaunchedEffect(resumeTick, autoStartWant) {
-        val g = com.dshpet.android.pet.AutoStartHelper.queryAutoStart(ctx)
+        val g = com.dshpet.android.compat.autostart.AutoStartHelper.queryAutoStart(ctx)
         autoStartGranted = g
         // 接收器只跟"用户开关"走：白名单没允许时系统本来就不会拉起我们，
         // 但把接收器关掉反而会导致"后来在系统里授权了却永远收不到开机广播"。
         val desired = autoStartWant
         if (desired != receiverSynced) {
-            com.dshpet.android.pet.AutoStartHelper.setBootReceiverEnabled(ctx, desired)
+            com.dshpet.android.compat.autostart.AutoStartHelper.setBootReceiverEnabled(ctx, desired)
             receiverSynced = desired
         }
-        com.dshpet.android.util.AppLog.u("桌宠", "开机自启：开关=${if (autoStartWant) "开" else "关"}，系统白名单=${com.dshpet.android.pet.AutoStartHelper.grantedText(g)}")
+        com.dshpet.android.util.AppLog.u("桌宠", "开机自启：开关=${if (autoStartWant) "开" else "关"}，系统白名单=${com.dshpet.android.compat.autostart.AutoStartHelper.grantedText(g)}")
     }
     // 显示 = 意愿 且（系统允许 或 读不到）
     val autoStartShown = autoStartWant && (autoStartGranted ?: true)
@@ -397,14 +397,14 @@ private fun GeneralTab(
         }
         Section("后台行为") {
             // 开关 = 用户意愿 且 系统「自启动白名单」允许；没权限时点它会被送去系统设置页
-            val needGuide = com.dshpet.android.pet.AutoStartHelper.needsGuide()
+            val needGuide = com.dshpet.android.compat.autostart.AutoStartHelper.needsGuide()
             SwitchRow(
                 "开机自启",
                 buildString {
                     append("重启手机后自动显示桌宠")
                     if (needGuide) {
                         append("｜系统白名单：")
-                        append(com.dshpet.android.pet.AutoStartHelper.grantedText(autoStartGranted))
+                        append(com.dshpet.android.compat.autostart.AutoStartHelper.grantedText(autoStartGranted))
                     }
                 },
                 autoStartShown,
@@ -413,7 +413,7 @@ private fun GeneralTab(
                     scope.launch { cfg.setAutoStart(true) }
                     val g = autoStartGranted
                     // 接收器不因"白名单未允许"而关掉：否则以后在系统里授权了也收不到开机广播
-                    com.dshpet.android.pet.AutoStartHelper.setBootReceiverEnabled(ctx, true)
+                    com.dshpet.android.compat.autostart.AutoStartHelper.setBootReceiverEnabled(ctx, true)
                     if (g == false) {
                         // 系统没允许：先把人送去「自启动管理」，回来后 onResume 会重新查权限，
                         // 授权成功那一下开关才会真的变成"开"（没给权限就保持原样）
@@ -421,22 +421,22 @@ private fun GeneralTab(
                             ctx, "先去系统里把「小肥鱼」的自启动打开，回来这里会自动变成开",
                             android.widget.Toast.LENGTH_LONG,
                         ).show()
-                        com.dshpet.android.pet.AutoStartHelper.guide(ctx)
+                        com.dshpet.android.compat.autostart.AutoStartHelper.guide(ctx)
                     }
                 } else {
                     scope.launch { cfg.setAutoStart(false) }
-                    com.dshpet.android.pet.AutoStartHelper.setBootReceiverEnabled(ctx, false)
+                    com.dshpet.android.compat.autostart.AutoStartHelper.setBootReceiverEnabled(ctx, false)
                 }
             }
             // 小米/红米等 ROM 默认拦第三方自启：光开上面的开关没用，系统压根不会拉起本应用
             if (needGuide) {
                 SettingRow(
                     "系统自启动白名单",
-                    "${com.dshpet.android.pet.AutoStartHelper.romName()} 当前：${
-                        com.dshpet.android.pet.AutoStartHelper.grantedText(autoStartGranted)
+                    "${com.dshpet.android.compat.autostart.AutoStartHelper.romName()} 当前：${
+                        com.dshpet.android.compat.autostart.AutoStartHelper.grantedText(autoStartGranted)
                     }。未允许时上面的开关不会真的生效",
                     trailing = {
-                        TextButton(onClick = { com.dshpet.android.pet.AutoStartHelper.guide(ctx) }) {
+                        TextButton(onClick = { com.dshpet.android.compat.autostart.AutoStartHelper.guide(ctx) }) {
                             Text("去设置")
                         }
                     },
@@ -745,7 +745,7 @@ private fun AppearanceEffectSection(cfg: PetConfig, scope: kotlinx.coroutines.Co
     Section("效果") {
         SwitchRow(
             "毛玻璃效果",
-            if (Build.VERSION.SDK_INT >= 31) "菜单 / 聊天窗 / 设置面板背景模糊（默认关）"
+            if (com.dshpet.android.compat.Platform.blurSupported) "菜单 / 聊天窗 / 设置面板背景模糊（默认关）"
             else "当前系统版本（<Android 12）不支持硬件模糊，将回退为半透明",
             blur,
         ) { on -> scope.launch { cfg.setBlur(on) } }

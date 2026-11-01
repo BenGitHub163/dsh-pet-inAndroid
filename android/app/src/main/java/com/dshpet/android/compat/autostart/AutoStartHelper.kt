@@ -1,4 +1,4 @@
-package com.dshpet.android.pet
+package com.dshpet.android.compat.autostart
 
 import android.content.ComponentName
 import android.content.Context

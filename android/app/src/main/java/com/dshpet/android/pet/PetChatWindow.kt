@@ -140,7 +140,7 @@ class PetChatWindow(private val ctx: Context) {
     @Composable
     private fun ChatFloatingContent() {
         val blurCfg by config.flowBool("blur_enabled", false).collectAsState(initial = false)
-        val blur = blurCfg && Build.VERSION.SDK_INT >= 31
+        val blur = blurCfg && com.dshpet.android.compat.Platform.blurSupported
         MaterialTheme {
             Surface(
                 modifier = Modifier

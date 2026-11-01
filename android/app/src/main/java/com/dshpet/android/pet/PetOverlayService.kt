@@ -469,6 +469,8 @@ open class PetOverlayService : Service() {
         runCatching { wm.updateViewLayout(c, lp) }
         // 触摸窗口跟着视觉窗口走（位置 = 视觉窗口 + 人物包围盒左上角）
         syncTouchWindow()
+        // 语音状态胶囊也跟着走（没显示时内部直接 return，零开销）
+        voiceBadge.followWindow(lp.x, lp.y, lp.width, lp.height)
         val cost = SystemClock.uptimeMillis() - t
         if (cost >= 8) android.util.Log.i("Dsh_JANK", "updateViewLayout ${cost}ms → $pendingWinX,$pendingWinY")
         // 拖拽"跟手度"诊断：手指 ACTION_MOVE → 窗口真正搬过去的时间差。
@@ -822,7 +824,7 @@ open class PetOverlayService : Service() {
         bubble?.bubbleStyle = config.selfTalkBubbleStyle()
         curBubbleColor = config.selfTalkBubbleColor()
         bubble?.bubbleColor = curBubbleColor
-        bubble?.blurOn = config.blurEnabled() && Build.VERSION.SDK_INT >= 31
+        bubble?.blurOn = config.blurEnabled() && com.dshpet.android.compat.Platform.blurSupported
 
         // 播放速度（默认 1.5x）
         curSpeed = config.playbackSpeed()
@@ -1599,6 +1601,8 @@ open class PetOverlayService : Service() {
 
     // ---- 桌宠内置语音（不进任何页面）----
     private var voiceLoop: com.dshpet.android.voice.core.VoiceLoop? = null
+    /** 语音状态胶囊（听/思考/说话），独立小窗，避免占用桌宠窗口空间 */
+    private val voiceBadge by lazy { VoiceStateBadge(this) }
 
     private fun startVoiceInOverlay() {
         if (voiceLoop != null) return
@@ -1621,11 +1625,23 @@ open class PetOverlayService : Service() {
         }
         voiceLoop = l
         AppLog.u("语音", "桌宠内置语音已启动")
+        // 状态胶囊：听 / 思考 / 说话（三击进入对话时立刻能看到"我在听"）
+        scope.launch {
+            runCatching {
+                l.state.collect { st ->
+                    uiHandler.post {
+                        voiceBadge.update(st)
+                        voiceBadge.followWindow(engine.winX, engine.winY, engine.winW, engine.winH)
+                    }
+                }
+            }.onFailure { AppLog.log("VOICE", "状态收集失败：${it.message}") }
+        }
     }
 
     private fun stopVoiceInOverlay() {
         com.dshpet.android.voice.core.VoiceRuntime.stop()
         voiceLoop = null
+        voiceBadge.hide()
         AppLog.u("语音", "桌宠内置语音已停止")
     }
 
@@ -2439,7 +2455,7 @@ open class PetOverlayService : Service() {
             AppLog.log("SELFTALK", "气泡自定义颜色「$curBubbleColor」")
         }
         watch(c.flowBool("blur_enabled", false)) { v ->
-            bubble?.blurOn = (v as Boolean) && Build.VERSION.SDK_INT >= 31
+            bubble?.blurOn = (v as Boolean) && com.dshpet.android.compat.Platform.blurSupported
         }
         watch(c.flowDouble("self_talk_duration_seconds", 3.2)) { v ->
             curSelfTalkDurationMs = ((v as Double) * 1000).toLong()

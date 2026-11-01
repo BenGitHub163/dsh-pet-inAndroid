@@ -78,12 +78,12 @@ class PetApp : Application() {
             // 开机自启：接收器只跟"用户开关"走（白名单没给允许时系统本来就不会拉起我们，
             // 留着接收器也无害）；白名单只用于 UI 显示真实状态，**绝不能**拿它决定"现在要不要启动桌宠"。
             val autoStartWant = cfg.autoStart()
-            val autoStartGranted = com.dshpet.android.pet.AutoStartHelper.queryAutoStart(this@PetApp)
-            com.dshpet.android.pet.AutoStartHelper.setBootReceiverEnabled(this@PetApp, autoStartWant)
+            val autoStartGranted = com.dshpet.android.compat.autostart.AutoStartHelper.queryAutoStart(this@PetApp)
+            com.dshpet.android.compat.autostart.AutoStartHelper.setBootReceiverEnabled(this@PetApp, autoStartWant)
             AppLog.log(
                 "BOOT",
                 "启动对账：开机自启=$autoStartWant 系统白名单=${
-                    com.dshpet.android.pet.AutoStartHelper.grantedText(autoStartGranted)
+                    com.dshpet.android.compat.autostart.AutoStartHelper.grantedText(autoStartGranted)
                 }",
             )
             if (autoStartWant && cfg.overlayPermissionGranted()) {
