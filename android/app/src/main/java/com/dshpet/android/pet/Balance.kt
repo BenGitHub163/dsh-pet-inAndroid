@@ -1,6 +1,5 @@
 package com.dshpet.android.pet
 
-import okhttp3.Request
 
 /**
  * DeepSeek 余额查询（GET /user/balance），1:1 移植 balance.py。
@@ -67,47 +66,11 @@ object Balance {
         return "余额时段：" + tier + "（" + waitText + "后切换）"
     }
 
-    fun fetch(
+    /** HTTP 与解析已重构进 api/BalanceApi；这里只保留"余额文案/档位"这类纯逻辑 */
+    suspend fun fetch(
         baseUrl: String,
         apiKey: String,
         verifySsl: Boolean = true,
-        timeoutSec: Int = 10,
-    ): Result<String> {
-        if (apiKey.isBlank()) return Result.failure(IllegalStateException("未配置 API Key"))
-        val endpoint = baseUrl.trim().trimEnd('/') + "/user/balance"
-        return try {
-val client = com.dshpet.android.api.ApiClient.config(
-            connectSec = timeoutSec.toLong(),
-            readSec = timeoutSec.toLong(),
-            writeSec = timeoutSec.toLong(),
-            verifySsl = verifySsl,
-        )
-            val req = Request.Builder()
-                .url(endpoint)
-                .header("Authorization", "Bearer $apiKey")
-                .header("Accept", "application/json")
-                .build()
-            client.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) {
-                    return Result.failure(IllegalStateException("HTTP ${resp.code}（该端点可能不支持余额查询）"))
-                }
-                val text = resp.body?.string().orEmpty()
-                val json = org.json.JSONObject(text)
-                val infos = json.optJSONArray("balance_infos")
-                    ?: return Result.failure(IllegalStateException("响应中没有余额信息"))
-                val info = infos.getJSONObject(0)
-                val total = info.optString("total_balance", "")
-                val granted = info.optString("granted_balance", "")
-                val topped = info.optString("topped_up_balance", "")
-                if (total.isBlank()) return Result.success("余额信息为空")
-                if (granted.isNotBlank() && topped.isNotBlank()) {
-                    Result.success("余额 ¥$total（充值 ¥$topped / 赠送 ¥$granted）")
-                } else {
-                    Result.success("余额 ¥$total")
-                }
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
+        timeoutSec: Int = 15,
+    ): Result<String> = com.dshpet.android.api.BalanceApi.fetch(baseUrl, apiKey, verifySsl, timeoutSec)
 }
