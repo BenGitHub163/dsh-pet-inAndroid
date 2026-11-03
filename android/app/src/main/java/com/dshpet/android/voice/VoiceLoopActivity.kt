@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import android.text.InputType
 import android.view.ViewGroup
+import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
@@ -52,6 +53,9 @@ class VoiceLoopActivity : Activity() {
     private lateinit var capsText: TextView
     private lateinit var usageHint: TextView
     private lateinit var voiceSpinner: Spinner
+    private lateinit var providerSpinner: Spinner
+    private lateinit var breezeVoiceBox: android.widget.EditText
+    private lateinit var cfgSummary: TextView
     private lateinit var startBtn: Button
     private lateinit var stopBtn: Button
     private lateinit var memoryBtn: Button
@@ -125,13 +129,58 @@ class VoiceLoopActivity : Activity() {
 
         root.addView(label("DeepSeek API Key"))
 
+        // ---------- 服务商（与「AI 对话 → 语音 API」同一份配置；这里改只影响本次测试） ----------
+        root.addView(label("语音服务商（和「语音 API」页共用配置；这里改只影响本次测试）"))
+        providerSpinner = Spinner(this)
+        providerSpinner.adapter = ArrayAdapter(
+            this, android.R.layout.simple_spinner_item,
+            listOf(
+                VoiceSettings.providerName(VoiceSettings.PROVIDER_VOLCENGINE),
+                VoiceSettings.providerName(VoiceSettings.PROVIDER_BREEZE),
+                VoiceSettings.providerName(VoiceSettings.PROVIDER_SYSTEM),
+            ),
+        ).apply { setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
+        providerSpinner.setSelection(
+            when (settings.provider) {
+                VoiceSettings.PROVIDER_BREEZE -> 1
+                VoiceSettings.PROVIDER_SYSTEM -> 2
+                else -> 0
+            }
+        )
+        providerSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(p: AdapterView<*>?, v: android.view.View?, pos: Int, id: Long) {
+                settings = settings.copy(
+                    provider = when (pos) {
+                        1 -> VoiceSettings.PROVIDER_BREEZE
+                        2 -> VoiceSettings.PROVIDER_SYSTEM
+                        else -> VoiceSettings.PROVIDER_VOLCENGINE
+                    }
+                )
+                // 控件还没建好时（onCreate 里的 setSelection 会立刻回调）先跳过
+                if (::voiceSpinner.isInitialized && ::breezeVoiceBox.isInitialized) renderVoicePicker()
+            }
+            override fun onNothingSelected(p: AdapterView<*>?) {}
+        }
+        root.addView(providerSpinner)
+
         root.addView(label("音色"))
         voiceSpinner = Spinner(this)
-        voiceSpinner.adapter = ArrayAdapter(
-            this, android.R.layout.simple_spinner_item, voices.map { it.second }
-        ).apply { setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
-        voiceSpinner.setSelection(voices.indexOfFirst { it.first == settings.voiceId }.coerceAtLeast(0))
         root.addView(voiceSpinner)
+        breezeVoiceBox = android.widget.EditText(this).apply {
+            hint = "Breeze 音色 ID（voc_ 开头）"
+            setText(settings.breezeVoiceId)
+            inputType = android.text.InputType.TYPE_CLASS_TEXT
+            visibility = android.view.View.GONE
+        }
+        root.addView(breezeVoiceBox)
+
+        // 当前生效配置，一眼看清测的是谁
+        cfgSummary = TextView(this).apply {
+            textSize = 11f
+            setTextColor(0xFF888888.toInt())
+            setPadding(0, 8, 0, 0)
+        }
+        root.addView(cfgSummary)
 
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; setPadding(0, 24, 0, 8)
@@ -234,6 +283,7 @@ class VoiceLoopActivity : Activity() {
         root.addView(dsReplyView)
 
         setContentView(ScrollView(this).apply { addView(root) })
+        renderVoicePicker()
 
         capsText.text = ""
         refreshCaps()
@@ -354,12 +404,60 @@ class VoiceLoopActivity : Activity() {
      * 只写后者的话，下一次启动语音又回到默认音色（"音色改不了"的根因）。
      */
     private fun persistVoiceChoice() {
-        val vid = voices[voiceSpinner.selectedItemPosition].first
-        settings = settings.copy(voiceId = vid)
-        store.save(settings)
-        uiScope.launch {
-            com.dshpet.android.data.PetConfig.get(applicationContext).setDoubaoVoiceId(vid)
+        // 按当前服务商落盘：豆包写 voiceId，Breeze 写 breezeVoiceId（store.save 会同步 PetConfig）
+        settings = if (settings.provider == VoiceSettings.PROVIDER_BREEZE) {
+            settings.copy(breezeVoiceId = breezeVoiceBox.text.toString().trim())
+        } else {
+            settings.copy(voiceId = settings.voiceId)
         }
+        store.save(settings)
+        updateCfgSummary()
+    }
+
+    /** 按当前服务商切换"音色"控件：豆包 = 443 条下拉；Breeze = 输入 ID；系统 = 隐藏 */
+    private fun renderVoicePicker() {
+        val doubao = com.dshpet.android.voice.DoubaoVoices.load(this)
+        when (settings.provider) {
+            VoiceSettings.PROVIDER_BREEZE -> {
+                voiceSpinner.visibility = android.view.View.GONE
+                breezeVoiceBox.visibility = android.view.View.VISIBLE
+            }
+            VoiceSettings.PROVIDER_SYSTEM -> {
+                voiceSpinner.visibility = android.view.View.GONE
+                breezeVoiceBox.visibility = android.view.View.GONE
+            }
+            else -> {
+                voiceSpinner.visibility = android.view.View.VISIBLE
+                breezeVoiceBox.visibility = android.view.View.GONE
+                voiceSpinner.adapter = ArrayAdapter(
+                    this, android.R.layout.simple_spinner_item,
+                    doubao.map { it.second + " · " + it.third },
+                ).apply { setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
+                voiceSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                    override fun onItemSelected(p: AdapterView<*>?, v: android.view.View?, pos: Int, id: Long) {
+                        if (pos in doubao.indices) {
+                            settings = settings.copy(voiceId = doubao[pos].first)
+                            updateCfgSummary()
+                        }
+                    }
+                    override fun onNothingSelected(p: AdapterView<*>?) {}
+                }
+                voiceSpinner.setSelection(doubao.indexOfFirst { it.first == settings.voiceId }.coerceAtLeast(0))
+            }
+        }
+        updateCfgSummary()
+    }
+
+    private fun updateCfgSummary() {
+        val voice = if (settings.provider == VoiceSettings.PROVIDER_BREEZE) {
+            breezeVoiceBox.text.toString().ifBlank { "未填" }
+        } else {
+            com.dshpet.android.voice.DoubaoVoices.nameOf(this, settings.voiceId)
+        }
+        cfgSummary.text = "当前：服务商=" + VoiceSettings.providerName(settings.provider) +
+            " 音色=" + voice +
+            " 情绪=" + settings.emotion.ifBlank { "无" } + "/" + settings.emotionScale +
+            " 语速=" + settings.speechRate + " 音量=" + settings.loudnessRate
     }
 
     /** 打字发送：走与语音相同的 对话 → TTS → 播放 链路 */
