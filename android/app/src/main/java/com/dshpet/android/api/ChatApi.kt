@@ -26,14 +26,15 @@ class ChatApi(private val ctx: Context) {
         const val DEFAULT_MODEL = "deepseek-chat"
     }
 
-    private fun cfg(maxTokens: Int): SseClient.ChatCfg {
+    /** 同包内的其它接口（视觉/记忆等）复用同一套端点与鉴权 */
+    internal fun cfg(maxTokens: Int, temperature: Double = -1.0): SseClient.ChatCfg {
         val ready = PetConfig.snapReady
         return SseClient.ChatCfg(
             baseUrl = (if (ready) PetConfig.snapBaseUrl else "").ifBlank { DEFAULT_BASE_URL },
             chatPath = (if (ready) PetConfig.snapChatPath else "").ifBlank { DEFAULT_PATH },
             model = (if (ready) PetConfig.snapModel else "").ifBlank { DEFAULT_MODEL },
             apiKey = (if (ready) PetConfig.snapChatKey else "").ifBlank { KeyFactory.defaults().deepseek },
-            temperature = if (ready) PetConfig.snapTemperature else 0.7,
+            temperature = if (temperature >= 0) temperature else if (ready) PetConfig.snapTemperature else 0.7,
             maxTokens = maxTokens,
             timeoutSec = if (ready) PetConfig.snapTimeout else 60,
             verifySsl = if (ready) PetConfig.snapVerifySsl else true,

@@ -13,6 +13,5 @@ com/dshpet/android/MainActivity.kt
 com/dshpet/android/data/PetConfig.kt
 com/dshpet/android/voice/BreezeVoices.kt
 com/dshpet/android/voice/VoiceApiActivity.kt
-com/dshpet/android/voice/VoiceLoopActivity.kt
 com/dshpet/android/voice/providers/BreezeTtsProvider.kt
 com/dshpet/android/voice/providers/VolcengineTtsProvider.kt

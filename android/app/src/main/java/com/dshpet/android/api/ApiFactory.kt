@@ -52,8 +52,7 @@ object ApiFactory {
         )
 
     /** 视觉观察（"看我一眼"） */
-    fun vision(): com.dshpet.android.voice.vision.VisionClient =
-        com.dshpet.android.voice.vision.VisionClient()
+    fun vision(ctx: Context): VisionApi = VisionApi(ctx.applicationContext)
 
     /** 更新检查 */
     fun update(): UpdateApi = UpdateApi

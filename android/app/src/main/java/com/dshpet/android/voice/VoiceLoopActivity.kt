@@ -62,7 +62,6 @@ class VoiceLoopActivity : Activity() {
     private lateinit var memoryBtn: Button
     private lateinit var privacyBtn: Button
     private lateinit var visionBtn: Button
-    private val visionClient = com.dshpet.android.api.ApiFactory.vision()
     private val cameraSnap by lazy { com.dshpet.android.voice.vision.CameraSnap(this) }
 
     /** 上一次"语音里让桌宠看一眼"自动拍照的时间（毫秒，elapsedRealtime） */
@@ -365,17 +364,8 @@ class VoiceLoopActivity : Activity() {
                     visionBtn.text = "没拍到，再试一次"
                     return@launch
                 }
-                val cfg = com.dshpet.android.chat.SseClient.ChatCfg(
-                    baseUrl = "https://api.deepseek.com",
-                    chatPath = "/v1/chat/completions",
-                    model = "deepseek-chat",
-                    apiKey = settings.deepseekKey,
-                    temperature = 0.3,
-                    maxTokens = 200,
-                    timeoutSec = 60,
-                    verifySsl = true,
-                )
-                val observation = visionClient.observe(cfg, shots)
+                    // 端点/key 统一由 ApiFactory.vision() 提供（不再本页硬编码 deepseek）
+                    val observation = com.dshpet.android.api.ApiFactory.vision(this@VoiceLoopActivity).observe(shots)
                 if (observation.isNullOrBlank()) {
                     visionBtn.text = "看不出什么"
                 } else {
