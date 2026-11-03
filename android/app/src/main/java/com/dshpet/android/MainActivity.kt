@@ -1375,7 +1375,7 @@ private fun AiTab(ctx: android.content.Context, cfg: PetConfig, scope: kotlinx.c
             SettingRow(
                 "语音服务商",
                 com.dshpet.android.voice.core.VoiceSettings.providerName(vs.provider) +
-                    " ｜ 音色 " + vs.voiceId +
+                    " ｜ 音色 " + (if (vs.provider == com.dshpet.android.voice.core.VoiceSettings.PROVIDER_BREEZE) vs.breezeVoiceId.ifBlank { "未选" } else vs.voiceId) +
                     " ｜ " + (if (vs.emotion.isBlank()) "无情绪" else "情绪 " + vs.emotion + "/" + vs.emotionScale) +
                     " ｜ 语速 " + vs.speechRate + " · 音量 " + vs.loudnessRate,
                 trailing = {
@@ -1391,7 +1391,7 @@ private fun AiTab(ctx: android.content.Context, cfg: PetConfig, scope: kotlinx.c
             // 每个 API 一行：「测试」+ 可选附加能力（由 ApiTargets 工厂给出，界面不硬编码）
             var apiTargets by remember { mutableStateOf<List<com.dshpet.android.api.ApiTarget>>(emptyList()) }
             var apiResult by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
-            LaunchedEffect(Unit) { apiTargets = com.dshpet.android.api.ApiTargets.build(cfg) }
+            LaunchedEffect(Unit) { apiTargets = com.dshpet.android.api.ApiTargets.build(cfg, ctx) }
             apiTargets.forEach { t ->
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),

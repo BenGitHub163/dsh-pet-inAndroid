@@ -3,6 +3,7 @@ package com.dshpet.android.voice.core
 import android.content.Context
 import com.dshpet.android.util.AppLog
 import com.dshpet.android.voice.TtsConfig
+import com.dshpet.android.voice.TtsProvider
 import com.dshpet.android.voice.TtsEngines
 import com.dshpet.android.voice.VoiceProfile
 import com.dshpet.android.voice.providers.VolcengineTtsProvider
@@ -28,28 +29,20 @@ object QuickTts {
         val t = text.trim()
         if (t.isEmpty()) return@withContext false
 
+        // **和「语音 API」页保持同一份配置**：provider 选谁就用谁（豆包 / Breeze / 系统）
         val settings = runCatching { VoiceRuntime.buildSettings(ctx) }.getOrNull()
             ?: return@withContext false
-        if (settings.doubaoKey.isBlank()) return@withContext false
+        if (!com.dshpet.android.voice.VoiceTtsFactory.isReady(settings)) return@withContext false
 
         val player = SpeechPlayer(ctx)
-        var provider: VolcengineTtsProvider? = null
+        var provider: TtsProvider? = null
         try {
-            val p = VolcengineTtsProvider(
-                TtsConfig(
-                    providerId = TtsEngines.ID_VOLCENGINE,
-                    apiKey = settings.doubaoKey,
-                    resourceId = settings.resourceId,
-                    extra = mapOf(
-                        "format" to settings.format,
-                        "sample_rate" to settings.sampleRate.toString(),
-                    ),
-                )
-            )
+            val p = com.dshpet.android.voice.VoiceTtsFactory.create(ctx, settings)
             provider = p
-            val session = player.startSession(settings.sampleRate)
+            val rate = if (settings.provider == VoiceSettings.PROVIDER_VOLCENGINE) settings.sampleRate else 24000
+            val session = player.startSession(rate)
             var bytes = 0
-            p.synthesize(t, VoiceProfile(voiceId = settings.voiceId)) { chunk ->
+            p.synthesize(t, com.dshpet.android.voice.VoiceTtsFactory.profileFor(settings)) { chunk ->
                 chunk.pcm?.let { pcm ->
                     player.prepareRate(chunk.sampleRate, session)
                     player.writeFor(session, pcm)

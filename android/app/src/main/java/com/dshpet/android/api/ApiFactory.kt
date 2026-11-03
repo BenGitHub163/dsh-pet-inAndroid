@@ -49,7 +49,7 @@ data class ApiTarget(
  */
 object ApiTargets {
 
-    suspend fun build(cfg: PetConfig): List<ApiTarget> {
+    suspend fun build(cfg: PetConfig, appCtx: android.content.Context): List<ApiTarget> {
         val dsKey = cfg.chatApiKey()
         val dbKey = cfg.doubaoApiKey()
         val voice = cfg.doubaoVoiceId()
@@ -102,31 +102,27 @@ object ApiTargets {
             },
         )
 
-        val doubao = ApiTarget(
-            id = "doubao_tts",
-            name = "豆包语音合成",
-            keyHint = mask(dbKey),
+        // 语音合成按「语音 API」页里当前选的服务商来测（豆包 / Breeze / 系统），
+        // 不再写死豆包，也不再读 PetConfig 里的旧 key。
+        val vs = com.dshpet.android.voice.core.VoiceSettingsStore.get(appCtx).load()
+        val ttsKey = if (vs.provider == com.dshpet.android.voice.core.VoiceSettings.PROVIDER_BREEZE) vs.breezeKey else vs.doubaoKey
+        val tts = ApiTarget(
+            id = "tts",
+            name = "语音合成（" + com.dshpet.android.voice.core.VoiceSettings.providerName(vs.provider) + "）",
+            keyHint = mask(ttsKey),
             test = {
                 runCatching {
-                    val p = VolcengineTtsProvider(
-                        TtsConfig(
-                            providerId = "volcengine",
-                            apiKey = dbKey,
-                            resourceId = rid.ifBlank { "seed-tts-2.0" },
-                            extra = mapOf("format" to "pcm", "sample_rate" to "24000"),
-                        )
-                    )
+                    val p = com.dshpet.android.voice.VoiceTtsFactory.create(appCtx, vs)
                     var bytes = 0
-                    p.synthesize(
-                        "你好呀",
-                        VoiceProfile(voiceId = voice.ifBlank { "zh_female_sajiaoxuemei_uranus_bigtts" }),
-                    ) { bytes += it.pcm?.size ?: 0 }
-                    if (bytes <= 0) error("没有返回音频") else "合成正常（${bytes / 1024} KB）"
+                    p.synthesize("你好呀", com.dshpet.android.voice.VoiceTtsFactory.profileFor(vs)) {
+                        bytes += it.pcm?.size ?: 0
+                    }
+                    if (bytes <= 0) error("没有返回音频") else "合成正常（" + bytes / 1024 + " KB）"
                 }
             },
         )
 
-        return listOf(deepseek, doubao)
+        return listOf(deepseek, tts)
     }
 
     private fun mask(key: String): String = when {

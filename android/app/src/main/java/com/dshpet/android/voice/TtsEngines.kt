@@ -1,6 +1,7 @@
 package com.dshpet.android.voice
 
 import android.content.Context
+import com.dshpet.android.voice.providers.BreezeTtsProvider
 import com.dshpet.android.voice.providers.OpenAiCompatTtsProvider
 import com.dshpet.android.voice.providers.SystemTtsProvider
 import com.dshpet.android.voice.providers.VolcengineTtsProvider
@@ -20,10 +21,12 @@ object TtsEngines {
     const val ID_SYSTEM = "system"
     const val ID_VOLCENGINE = "volcengine"
     const val ID_OPENAI = "openai"
+    const val ID_BREEZE = "breeze"
 
     /** 设置页展示用的清单（id -> 名称） */
     val catalog: List<Pair<String, String>> = listOf(
         ID_VOLCENGINE to "豆包语音合成 2.0（火山引擎）",
+        ID_BREEZE to "Breeze Blue（国外 TTS）",
         ID_OPENAI to "OpenAI 兼容 / 自建服务",
         ID_SYSTEM to "系统语音合成（兜底）",
     )
@@ -31,6 +34,7 @@ object TtsEngines {
     fun create(ctx: Context, cfg: TtsConfig): TtsProvider = when (cfg.providerId) {
         ID_VOLCENGINE -> VolcengineTtsProvider(cfg)
         ID_OPENAI -> OpenAiCompatTtsProvider(cfg)
+        ID_BREEZE -> BreezeTtsProvider(cfg)
         else -> SystemTtsProvider(ctx)
     }
 

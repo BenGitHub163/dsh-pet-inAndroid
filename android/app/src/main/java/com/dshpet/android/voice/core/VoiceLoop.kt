@@ -272,7 +272,7 @@ class VoiceLoop(context: Context) {
         }
         val tts = buildTts()
 
-        val voice = VoiceProfile(voiceId = settings.voiceId)
+        val voice = com.dshpet.android.voice.VoiceTtsFactory.profileFor(settings)
         lastSpeechAt = System.currentTimeMillis()
         nudgesSinceSpeech = 0
 
@@ -401,7 +401,7 @@ class VoiceLoop(context: Context) {
         _events.tryEmit(VoiceEvent.UserSaid(userText))
         _state.value = VoiceState.Thinking(userText)
 
-        val voice = VoiceProfile(voiceId = settings.voiceId)
+        val voice = com.dshpet.android.voice.VoiceTtsFactory.profileFor(settings)
         var answer = ""
 
         val length = ReplyLengthPolicy.hintFor(userText)
@@ -571,27 +571,14 @@ class VoiceLoop(context: Context) {
     }
 
     private fun buildTts(): TtsProvider {
+        // **所有非测试路径都走 VoiceTtsFactory**：用户在「语音 API」里选了哪家
+        //（豆包 / Breeze / 系统），这里就建哪家；心情偏移只对豆包生效，其它家忽略。
         val (moodRate, moodLoud) = moodVoiceParams()
-        // 用户在「语音 API」里设的语速/音量与情绪偏移叠加（火山允许 -50..100）
-        val rate = (settings.speechRate + moodRate).coerceIn(-50, 100)
-        val loud = (settings.loudnessRate + moodLoud).coerceIn(-50, 100)
-        val volc = VolcengineTtsProvider(
-            TtsConfig(
-                providerId = TtsEngines.ID_VOLCENGINE,
-                apiKey = settings.doubaoKey,
-                resourceId = settings.resourceId,
-                extra = mapOf(
-                    "format" to settings.format,
-                    "sample_rate" to settings.sampleRate.toString(),
-                    "speech_rate" to rate.toString(),
-                    "loudness_rate" to loud.toString(),
-                    // 情绪：空串 = 不带（provider 里会跳过空值），强度 1..5
-                    "emotion" to settings.emotion,
-                    "emotion_scale" to settings.emotionScale.toString(),
-                ),
-            )
+        val primary = com.dshpet.android.voice.VoiceTtsFactory.create(
+            appCtx, settings, moodRate, moodLoud,
         )
-        val cached = CachingTtsProvider(appCtx, volc, expectedRate = settings.sampleRate)
+        val rate = if (settings.provider == VoiceSettings.PROVIDER_VOLCENGINE) settings.sampleRate else 24000
+        val cached = CachingTtsProvider(appCtx, primary, expectedRate = rate)
         val system = SystemTtsProvider(appCtx)
         val chain = TtsChain(listOf(cached, system))
         activeTts = chain          // stop() 靠它掐断在途请求（见 stop() 的注释）
