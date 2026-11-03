@@ -23,20 +23,31 @@ object AppTrace {
     /** 日志等级（与 android.util.Log 对齐） */
     enum class Level { V, D, I, W }
 
+    /**
+     * `@JvmStatic` 不能删：`LogAopPlugin` 用 `INVOKESTATIC` 直接调这个类的方法
+     * （`LogAopPlugin.kt` 的 `visitMethodInsn(INVOKESTATIC, "com/dshpet/android/util/AppTrace", …)`）。
+     * Kotlin `object` 的成员默认是实例方法，少了它运行时会抛
+     * `IncompatibleClassChangeError: … expected to be of type static but instead was found to be of type virtual`，
+     * 而且是在被插桩的第一个方法就崩（`PetOverlayService.onCreate`）。
+     */
+    @JvmStatic
     fun enter(module: String, method: String, args: String) {
         log(Level.D, module, "→ $method" + if (args.isBlank()) "" else " | $args")
     }
 
+    @JvmStatic
     fun exit(module: String, method: String, elapsedMs: Long) {
         log(Level.D, module, "← $method" + if (elapsedMs >= 0) " | ${elapsedMs}ms" else "")
     }
 
     /** 插桩代码按注解里的 level 调用这个重载 */
+    @JvmStatic
     fun enter(level: String, module: String, method: String, args: String) {
         val lv = runCatching { Level.valueOf(level.uppercase()) }.getOrDefault(Level.D)
         log(lv, module, "→ $method" + if (args.isBlank()) "" else " | $args")
     }
 
+    @JvmStatic
     fun exit(level: String, module: String, method: String, elapsedMs: Long) {
         val lv = runCatching { Level.valueOf(level.uppercase()) }.getOrDefault(Level.D)
         log(lv, module, "← $method" + if (elapsedMs >= 0) " | ${elapsedMs}ms" else "")
