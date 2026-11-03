@@ -108,6 +108,8 @@ dependencies {
     implementation("androidx.datastore:datastore-preferences:1.1.1")
     implementation("androidx.media3:media3-exoplayer:1.3.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // 提示词用 YAML 组织（assets/prompts/prompts.yaml）
+    implementation("org.yaml:snakeyaml:2.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")

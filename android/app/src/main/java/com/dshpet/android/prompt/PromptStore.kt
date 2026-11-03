@@ -28,6 +28,10 @@ object PromptStore {
 
     private val cache = ConcurrentHashMap<String, String>()
 
+    /** YAML 总表解析结果（null = 还没解析过） */
+    @Volatile
+    private var yamlCache: Map<String, String>? = null
+
     @Volatile
     private var appCtx: Context? = null
 
@@ -35,28 +39,83 @@ object PromptStore {
     fun init(ctx: Context) {
         appCtx = ctx.applicationContext
         cache.clear()
+        yamlCache = null
         val n = runCatching {
             ctx.assets.list(ASSET_DIR)?.count { it.endsWith(".txt") } ?: 0
         }.getOrDefault(0)
-        AppLog.log(TAG, "提示词目录已就绪：assets/$ASSET_DIR 共 $n 个（用户覆盖目录 files/$ASSET_DIR）")
+        // 启动时就把 YAML 解析掉：一是尽早暴露语法错误，二是让"当前生效多少条"可查
+        val yaml = runCatching { yamlTable(ctx.applicationContext) }.getOrDefault(emptyMap())
+        AppLog.log(
+            TAG,
+            "提示词就绪：prompts.yaml ${yaml.size} 条，单文件兜底 $n 个（覆盖目录 files/$ASSET_DIR）",
+        )
     }
 
     /**
      * 取提示词。
-     * @param key 文件名（不含 `.txt`），如 `nudge_clingy`
+     *
+     * 查找顺序（先命中先用）：
+     *  1. `files/prompts/prompts.yaml`      —— 用户整表覆盖（改完重启生效）
+     *  2. `assets/prompts/prompts.yaml`     —— 随包内置的**总表**（推荐维护方式）
+     *  3. `files/prompts/<key>.txt`         —— 单条覆盖（临时热改最方便）
+     *  4. `assets/prompts/<key>.txt`        —— 单条内置（早期方式，仍兼容）
+     *  5. `fallback`                        —— 兜底，保证功能不哑
+     *
+     * @param key YAML 里的键 / txt 的文件名，如 `nudge_clingy`
      * @param fallback 资源缺失时的兜底文本（**保持短**，别把完整提示词再抄一遍）
      */
     fun text(key: String, fallback: String = ""): String {
         cache[key]?.let { return it }
         val ctx = appCtx ?: return fallback
-        val loaded = readOverride(ctx, key) ?: readAsset(ctx, key)
+        val loaded = readYaml(ctx, key)
+            ?: readOverride(ctx, key)
+            ?: readAsset(ctx, key)
         val value = loaded?.takeIf { it.isNotBlank() } ?: fallback
         cache[key] = value
         return value
     }
 
+    /** 解析后的 YAML 总表（懒加载，失败返回空表） */
+    private fun yamlTable(ctx: Context): Map<String, String> {
+        yamlCache?.let { return it }
+        val text = readOverrideYaml(ctx) ?: readAssetYaml(ctx)
+        val table = runCatching {
+            if (text.isNullOrBlank()) emptyMap() else parseYaml(text)
+        }.getOrElse { e ->
+            AppLog.log(TAG, "prompts.yaml 解析失败，回退到单文件：${e.message}")
+            emptyMap()
+        }
+        yamlCache = table
+        AppLog.log(TAG, "prompts.yaml 载入 ${table.size} 条")
+        return table
+    }
+
+    private fun readYaml(ctx: Context, key: String): String? = yamlTable(ctx)[key]
+
+    @Suppress("UNCHECKED_CAST")
+    private fun parseYaml(text: String): Map<String, String> {
+        val root = org.yaml.snakeyaml.Yaml().load<Map<String, Any?>>(text) ?: return emptyMap()
+        val prompts = root["prompts"] as? Map<String, Any?> ?: return emptyMap()
+        return prompts.mapNotNull { (k, v) ->
+            val s = (v as? String)?.trimEnd()
+            if (s.isNullOrBlank()) null else k to s
+        }.toMap()
+    }
+
+    private fun readOverrideYaml(ctx: Context): String? = runCatching {
+        val f = File(ctx.filesDir, "$ASSET_DIR/prompts.yaml")
+        if (f.exists()) f.readText() else null
+    }.getOrNull()
+
+    private fun readAssetYaml(ctx: Context): String? = runCatching {
+        ctx.assets.open("$ASSET_DIR/prompts.yaml").bufferedReader().use { it.readText() }
+    }.getOrNull()
+
     /** 丢掉缓存（改完覆盖文件后调用） */
-    fun reload() = cache.clear()
+    fun reload() {
+        cache.clear()
+        yamlCache = null
+    }
 
     private fun readOverride(ctx: Context, key: String): String? = runCatching {
         val f = File(ctx.filesDir, "$ASSET_DIR/$key.txt")
