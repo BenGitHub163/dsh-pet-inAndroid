@@ -49,6 +49,7 @@ class PetConfig(private val ctx: Context) {
         @Volatile var snapReady = false
         @Volatile var snapChatKey = ""
         @Volatile var snapBaseUrl = ""
+    @Volatile var snapChatPath = ""
         @Volatile var snapModel = ""
         @Volatile var snapTemperature = 1.0
         @Volatile var snapMaxTokens = 2048
@@ -64,6 +65,7 @@ class PetConfig(private val ctx: Context) {
         val c = PetConfig(ctx)
         snapChatKey = c.chatApiKey()
         snapBaseUrl = c.chatBaseUrl()
+        snapChatPath = c.chatPath()
         snapModel = c.chatModel()
         snapTemperature = c.chatTemperature()
         snapMaxTokens = c.chatMaxTokens()
@@ -263,6 +265,7 @@ class PetConfig(private val ctx: Context) {
         runCatching {
             snapChatKey = chatApiKey()
             snapBaseUrl = chatBaseUrl()
+        snapChatPath = chatPath()
             snapModel = chatModel()
             snapTemperature = chatTemperature()
             snapMaxTokens = chatMaxTokens()

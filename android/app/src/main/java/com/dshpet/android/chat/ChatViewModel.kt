@@ -103,27 +103,26 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             _streaming.value = true
             _streamText.value = ""
 
-            // 与语音对话共用同一套连接参数（唯一来源：ChatConfigFactory）
-            val cfg = com.dshpet.android.api.ApiFactory.chat(getApplication(), maxTokens = config.chatMaxTokens().coerceAtMost(512))
+            // 与语音对话共用同一套连接参数（唯一来源：ChatApi）
             val history = session.messages.takeLast(20).map { SseClient.Msg(it.role, it.content) }
-            streamJob = SseClient.stream(
-                cfg = cfg,
-                messages = history,
-                onDelta = { _streamText.value += it },
-                onError = { err ->
+            val maxTokens = config.chatMaxTokens().coerceAtMost(512)
+            streamJob = viewModelScope.launch {
+                try {
+                    com.dshpet.android.api.ApiFactory.chat(getApplication())
+                        .stream(history, maxTokens)
+                        .collect { _streamText.value += it }
+                } catch (e: Exception) {
+                    val err = e.message ?: e.javaClass.simpleName
                     _streamText.value = if (_streamText.value.isBlank()) "（错误）$err" else _streamText.value + "\n\n（错误）$err"
-                },
-                onDone = {
+                } finally {
                     val full = _streamText.value
-                    if (full.isNotBlank()) {
-                        session.messages.add(ChatRepo.Message("assistant", full))
-                    }
+                    if (full.isNotBlank()) session.messages.add(ChatRepo.Message("assistant", full))
                     repoSave(session)
                     _streamText.value = ""
                     _streaming.value = false
                     _busy.value = false
-                },
-            )
+                }
+            }
         }
     }
 

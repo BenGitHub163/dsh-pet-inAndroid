@@ -192,8 +192,8 @@ class SegmentRetriever {
  * 短期 → 中期 → 长期 的搬运工（MemoryOS 的 Updater + MemoryOS 的 heat 阈值）。
  */
 class MemoryConsolidator(
-    private val chat: ChatClient,
-    private val cfgProvider: () -> SseClient.ChatCfg,
+
+    private val chatApi: com.dshpet.android.api.ChatApi,
 ) {
 
     /** 把最近几轮对话压成一个话题片段 */
@@ -261,7 +261,7 @@ class MemoryConsolidator(
     private suspend fun collect(messages: List<SseClient.Msg>): String? {
         val sb = StringBuilder()
         return try {
-            chat.stream(cfgProvider(), messages).collect { sb.append(it) }
+            chatApi.stream(messages).collect { sb.append(it) }
             sb.toString().trim().ifBlank { null }
         } catch (e: Throwable) {
             Log.w(TAG, "llm call failed: ${e.message}")

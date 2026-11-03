@@ -20,8 +20,8 @@ import org.json.JSONArray
  *  我们本地执行这些操作 —— 模型不直接改文件，**可审计、可回滚**。
  */
 class MemoryCurator(
-    private val chat: ChatClient,
-    private val cfgProvider: () -> SseClient.ChatCfg,
+
+    private val chatApi: com.dshpet.android.api.ChatApi,
     context: Context,
 ) {
 
@@ -75,7 +75,7 @@ class MemoryCurator(
         )
         Log.i(TAG, "plan: asking model about ${items.size} items (sent ${minOf(items.size, MAX_SEND)})")
         val sb = StringBuilder()
-        runCatching { chat.stream(cfgProvider(), messages).collect { sb.append(it) } }
+        runCatching { chatApi.stream(messages).collect { sb.append(it) } }
             .onFailure { Log.w(TAG, "plan failed: ${it.message}"); return emptyList() }
         val raw = sb.toString()
         Log.i(TAG, "plan: reply ${raw.length} chars: ${raw.take(500).replace("\n", " ")}")

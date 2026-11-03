@@ -1,7 +1,6 @@
 package com.dshpet.android.api
 
 import android.content.Context
-import com.dshpet.android.chat.ChatConfigFactory
 import com.dshpet.android.chat.SseClient
 import com.dshpet.android.data.PetConfig
 import com.dshpet.android.voice.TtsConfig
@@ -24,10 +23,9 @@ import com.dshpet.android.voice.providers.VolcengineTtsProvider
  */
 object ApiFactory {
 
-    /** DeepSeek 对话配置（返回值可直接 `.copy(...)` 微调） */
+    /** 对话接口（能力出口）：key / 端点 / 模型都在 ChatApi 内部解决 */
     @com.dshpet.android.util.TraceLog(module = "API", level = "D")
-    fun chat(ctx: Context, maxTokens: Int = 2048): SseClient.ChatCfg =
-        ChatConfigFactory.build(ctx, maxTokens)
+    fun chat(ctx: Context): ChatApi = ChatApi(ctx.applicationContext)
 
     // ---------------- 以下是各类外部能力统一入口 ----------------
     // 约定：业务代码只从 ApiFactory 拿"能直接用的对象"，不自己拼 URL / 不自己 new client。

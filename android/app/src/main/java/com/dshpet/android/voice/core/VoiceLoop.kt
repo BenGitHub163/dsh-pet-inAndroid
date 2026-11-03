@@ -70,7 +70,7 @@ class VoiceLoop(context: Context) {
     private val pipeline = SpeechPipeline(scope, player)
 
     /** 长期记忆（抽取 → 合并 → 检索 → 注入）。注意 maxTokens 给足：抽取和整理都要输出完整 JSON */
-    private val memory by lazy { MemoryManager(appCtx, chat) { buildChatCfg(900) } }
+    private val memory by lazy { MemoryManager(appCtx, chatApi()) }
 
     /** 设备环境（时间/位置/电量/网络），每 30s 取一次 */
     private val deviceContext = com.dshpet.android.voice.context.DeviceContextProvider(appCtx)
@@ -376,7 +376,7 @@ class VoiceLoop(context: Context) {
     private suspend fun collectOneShot(messages: List<SseClient.Msg>, maxTokens: Int): String {
         val sb = StringBuilder()
         runCatching {
-            chat.stream(buildChatCfg(maxTokens), messages).collect { sb.append(it) }
+            chatApi().stream(messages, maxTokens).collect { sb.append(it) }
         }.onFailure { Log.w(TAG, "nudge chat failed: ${it.message}") }
         return sb.toString().trim().removeSurrounding("\"", "\"").trim()
     }
@@ -476,7 +476,7 @@ class VoiceLoop(context: Context) {
             )
         }
         val source: kotlinx.coroutines.flow.Flow<String> =
-            if (mock) mockReply(userText) else chat.stream(buildChatCfg(ReplyLengthPolicy.maxTokens(length)), messages)
+            if (mock) mockReply(userText) else chatApi().stream(messages, ReplyLengthPolicy.maxTokens(length))
         try {
             source.collect { delta ->
                 val sanitizeDelta = delta
@@ -598,8 +598,9 @@ class VoiceLoop(context: Context) {
         return chain
     }
 
-    private fun buildChatCfg(maxTokens: Int = 512) =
-        com.dshpet.android.api.ApiFactory.chat(appCtx, maxTokens = maxTokens)
+    /** 对话接口：key/端点/模型都在 ApiFactory 内部，本层只给消息 */
+    private fun chatApi(): com.dshpet.android.api.ChatApi =
+        com.dshpet.android.api.ApiFactory.chat(appCtx)
 
     private fun fail(reason: String, fatal: Boolean) {
         Log.e(TAG, reason)

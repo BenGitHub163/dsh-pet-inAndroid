@@ -33,8 +33,8 @@ data class MemoryContext(
  * 失败就静默放弃——记忆是增强功能，不能因为它影响对话。
  */
 class MemoryExtractor(
-    private val chat: ChatClient,
-    private val cfgProvider: () -> SseClient.ChatCfg,
+
+    private val chatApi: com.dshpet.android.api.ChatApi,
 ) {
 
     @com.dshpet.android.util.TraceLog(module = "MEM", level = "D")
@@ -46,7 +46,7 @@ class MemoryExtractor(
         )
         val sb = StringBuilder()
         runCatching {
-            chat.stream(cfgProvider(), messages).collect { sb.append(it) }
+            chatApi.stream(messages).collect { sb.append(it) }
         }.onFailure { Log.w(TAG, "extract call failed: ${it.message}") }
         return parse(sb.toString(), ctx)
     }
@@ -111,23 +111,23 @@ class MemoryExtractor(
  */
 class MemoryManager(
     context: Context,
-    private val chat: ChatClient,
-    private val cfgProvider: () -> SseClient.ChatCfg,
+
+    private val chatApi: com.dshpet.android.api.ChatApi,
 ) {
     private val store = MemoryStore(context.applicationContext)
     private val retriever = MemoryRetriever()
-    private val extractor = MemoryExtractor(chat, cfgProvider)
+    private val extractor = MemoryExtractor(chatApi)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val extracting = AtomicBoolean(false)
 
     // ---- 分层记忆：中期话题片段 + 长期事实（MemoryOS 三层结构的本地实现）----
     private val segments = SegmentStore(context.applicationContext)
     private val segmentRetriever = SegmentRetriever()
-    private val consolidator = MemoryConsolidator(chat, cfgProvider)
+    private val consolidator = MemoryConsolidator(chatApi)
     private val consolidating = AtomicBoolean(false)
 
     // ---- 记忆自省：量化 + 定期让模型评估修订 ----
-    private val curator = MemoryCurator(chat, cfgProvider, context.applicationContext)
+    private val curator = MemoryCurator(chatApi, context.applicationContext)
     private val curating = AtomicBoolean(false)
 
     /** 整理完成后回调（用于把结果反馈到界面，而不是静默） */

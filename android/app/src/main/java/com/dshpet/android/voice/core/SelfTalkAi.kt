@@ -37,18 +37,15 @@ object SelfTalkAi {
     /** 生成一句台词；失败返回 null（调用方回退到内置台词） */
     suspend fun generate(ctx: Context): String? = withContext(Dispatchers.IO) {
         runCatching {
-            val cfg = ApiFactory.chat(ctx, maxTokens = 64)
-            if (cfg.apiKey.isBlank()) return@runCatching null
-            val sb = StringBuilder()
-            ChatClient().stream(
-                cfg,
+            val text = ApiFactory.chat(ctx).complete(
                 listOf(
                     SseClient.Msg("system", SYSTEM),
                     SseClient.Msg("user", "（现在没人说话，你小声嘀咕一句）"),
                 ),
-            ).collect { delta -> sb.append(delta) }
-            clean(sb.toString()).also {
-                AppLog.log("SELFTALK", "AI 台词 raw=${sb.length} 字 →「${it ?: "(空)"}」")
+                maxTokens = 64,
+            )
+            clean(text).also {
+                AppLog.log("SELFTALK", "AI 台词 raw=${text.length} 字 →「${it ?: "(空)"}」")
             }
         }.getOrElse { e ->
             AppLog.log("SELFTALK", "AI 台词失败：${e.javaClass.simpleName} ${e.message}")
