@@ -57,9 +57,7 @@ object PromptStore {
      * 查找顺序（先命中先用）：
      *  1. `files/prompts/prompts.yaml`      —— 用户整表覆盖（改完重启生效）
      *  2. `assets/prompts/prompts.yaml`     —— 随包内置的**总表**（推荐维护方式）
-     *  3. `files/prompts/<key>.txt`         —— 单条覆盖（临时热改最方便）
-     *  4. `assets/prompts/<key>.txt`        —— 单条内置（早期方式，仍兼容）
-     *  5. `fallback`                        —— 兜底，保证功能不哑
+     *  3. `fallback`                        —— 兜底，保证功能不哑
      *
      * @param key YAML 里的键 / txt 的文件名，如 `nudge_clingy`
      * @param fallback 资源缺失时的兜底文本（**保持短**，别把完整提示词再抄一遍）
@@ -68,8 +66,6 @@ object PromptStore {
         cache[key]?.let { return it }
         val ctx = appCtx ?: return fallback
         val loaded = readYaml(ctx, key)
-            ?: readOverride(ctx, key)
-            ?: readAsset(ctx, key)
         val value = loaded?.takeIf { it.isNotBlank() } ?: fallback
         cache[key] = value
         return value
