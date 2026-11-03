@@ -19,7 +19,7 @@ import org.json.JSONObject
  * Breeze Blue TTS（https://docs.breezeblue.ai）。
  *
  * 走文档里的**流式**接口，延迟最低：
- *   `POST https://api.breeze.blue/v1/text-to-speech/{voice_id}/stream?output_format=pcm`
+ *   `POST /v1/text-to-speech/{voice_id}/stream?output_format=pcm`（域名见 api/BreezeApi）
  *   header `xi-api-key: brz_...`
  *   body   `{"text":"…","model_id":"breeze-tts-2"}`
  *   → 二进制音频流（pcm = 24 kHz / mono / s16le；也可 `output_format=mp3`）
@@ -55,10 +55,10 @@ class BreezeTtsProvider(private val cfg: TtsConfig) : TtsProvider {
                 cfg.extra["language_code"]?.takeIf { it.isNotBlank() }?.let { put("language_code", it) }
             }
             .toString()
-        val url = "https://api.breeze.blue/v1/text-to-speech/$voiceId/stream?output_format=$format"
+        val url = com.dshpet.android.api.BreezeApi.ttsStreamUrl(voiceId, format)
         val req = Request.Builder()
             .url(url)
-            .addHeader("xi-api-key", cfg.apiKey)
+            .addHeader(com.dshpet.android.api.BreezeApi.HEADER_KEY, cfg.apiKey)
             .post(body.toRequestBody("application/json".toMediaType()))
             .build()
 

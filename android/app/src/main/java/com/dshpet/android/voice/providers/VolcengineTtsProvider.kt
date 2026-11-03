@@ -116,7 +116,7 @@ class VolcengineTtsProvider(
             .header("X-Api-Resource-Id", cfg.resourceId.ifBlank { "seed-tts-2.0" })
             .post(body.toString().toRequestBody(JSON))
         if (cfg.apiKey.isNotBlank()) {
-            builder.header("X-Api-Key", cfg.apiKey)
+            builder.header(com.dshpet.android.api.DoubaoApi.HEADER_KEY, cfg.apiKey)
         } else {
             builder.header("X-Api-App-Id", cfg.appId)
             builder.header("X-Api-Access-Key", cfg.accessKey)
@@ -205,7 +205,7 @@ class VolcengineTtsProvider(
 
     companion object {
         private const val TAG = "DshVoice"
-        const val DEFAULT_URL = "https://openspeech.bytedance.com/api/v3/tts/unidirectional"
+        const val DEFAULT_URL = com.dshpet.android.api.DoubaoApi.TTS_URL
         /** 火山的成功码不止一个：分块接口用 0，汇总/单向接口用 20000000 */
         private val SUCCESS_CODES = setOf(0, 20000000)
         private val JSON = "application/json".toMediaType()

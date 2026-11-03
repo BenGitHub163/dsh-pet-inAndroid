@@ -132,7 +132,7 @@ val checkApiHosts by tasks.registering {
     val srcDir = file("src/main/java")
     val allowFile = apiHostsAllowlist
     inputs.dir(srcDir).withPropertyName("sources")
-    inputs.file(allowFile).withPropertyName("allowlist").optional(true)
+    if (allowFile.exists()) inputs.file(allowFile).withPropertyName("allowlist")
     doLast {
         val allow = if (allowFile.exists()) {
             allowFile.readLines()
@@ -150,7 +150,12 @@ val checkApiHosts by tasks.registering {
             if (rel.startsWith("com/dshpet/android/api/")) return@forEach
             val hits = f.readLines().withIndex()
                 .filter { (_, line) -> urlRegex.containsMatchIn(line) }
-                .map { (i, line) -> "${i + 1}: " + urlRegex.find(line)!!.value }
+                .mapNotNull { (i, line) ->
+                    val u = urlRegex.find(line)?.value ?: return@mapNotNull null
+                    // 文档/仓库链接不是接口调用（github.com 的 Releases 页、docs.* 文档）
+                    if (u.startsWith("https://github.com/") || u.startsWith("https://docs.")) null
+                    else "${i + 1}: $u"
+                }
             if (hits.isEmpty()) return@forEach
             if (rel in allow) {
                 stale.remove(rel)
