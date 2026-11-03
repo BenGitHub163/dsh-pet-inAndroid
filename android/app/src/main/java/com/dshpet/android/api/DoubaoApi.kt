@@ -14,6 +14,20 @@ class DoubaoApi : TtsCodec {
 
     override val id: String = "volcengine"
 
+    override fun displayName(cfg: TtsConfig): String = "豆包语音合成 2.0"
+
+    override fun isConfigured(cfg: TtsConfig): Boolean =
+        com.dshpet.android.data.KeyFactory.current().hasDoubao
+
+    override fun authHeaders(cfg: TtsConfig): Map<String, String> {
+        val keys = com.dshpet.android.data.KeyFactory.current()
+        return when {
+            keys.doubao.isNotBlank() -> mapOf(HEADER_KEY to keys.doubao)
+            keys.doubaoAppId.isNotBlank() -> mapOf("X-Api-App-Id" to keys.doubaoAppId)
+            else -> emptyMap()
+        }
+    }
+
     private var emitted = 0
     private var lastCode = Int.MIN_VALUE
     private var lastMsg = ""

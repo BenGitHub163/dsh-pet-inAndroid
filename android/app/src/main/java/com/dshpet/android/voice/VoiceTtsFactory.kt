@@ -68,11 +68,10 @@ object VoiceTtsFactory {
 
     /** 当前设置是否可用（缺 Key 时上层可以直接降级，不要报错） */
     fun isReady(s: VoiceSettings): Boolean {
-        val keys = com.dshpet.android.data.KeyFactory.current()
-        return when (s.provider) {
-            VoiceSettings.PROVIDER_BREEZE -> keys.hasBreeze && s.breezeVoiceId.isNotBlank()
-            VoiceSettings.PROVIDER_SYSTEM -> true
-            else -> keys.hasDoubao
-        }
+        if (s.provider == VoiceSettings.PROVIDER_SYSTEM) return true
+        val cfg = configFor(s)
+        val codec = TtsEngines.codec(cfg.providerId) ?: return false
+        if (!codec.isConfigured(cfg)) return false
+        return s.provider != VoiceSettings.PROVIDER_BREEZE || s.breezeVoiceId.isNotBlank()
     }
 }

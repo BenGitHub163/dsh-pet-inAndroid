@@ -18,6 +18,16 @@ object BreezeApi : TtsCodec {
 
     override val id: String = "breeze"
 
+    override fun displayName(cfg: TtsConfig): String = "Breeze Blue"
+
+    override fun isConfigured(cfg: TtsConfig): Boolean =
+        com.dshpet.android.data.KeyFactory.current().hasBreeze
+
+    override fun authHeaders(cfg: TtsConfig): Map<String, String> {
+        val key = com.dshpet.android.data.KeyFactory.current().breeze
+        return if (key.isBlank()) emptyMap() else mapOf(HEADER_KEY to key)
+    }
+
     suspend fun listVoices(language: String = "zh"): List<Pair<String, String>> =
         withContext(Dispatchers.IO) {
             val apiKey = com.dshpet.android.data.KeyFactory.current().breeze

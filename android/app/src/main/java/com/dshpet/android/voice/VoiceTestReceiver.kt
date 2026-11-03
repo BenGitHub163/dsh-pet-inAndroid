@@ -51,7 +51,6 @@ class VoiceTestReceiver : BroadcastReceiver() {
             path = intent.getStringExtra("path").orEmpty(),
             resourceId = intent.getStringExtra("resourceId").orEmpty(),
             appId = intent.getStringExtra("appId").orEmpty(),
-            accessKey = intent.getStringExtra("accessKey").orEmpty(),
             extra = mapOf(
                 "format" to (intent.getStringExtra("format") ?: "pcm"),
                 "sample_rate" to intent.getIntExtra("sampleRate", 24000).toString(),

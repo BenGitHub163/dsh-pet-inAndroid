@@ -534,7 +534,7 @@ private object TtsPreview {
         val track = newTrack(rate)
         try {
             track.play()
-            TtsApi(codec).synthesize(TEXT, voice, cfg) { chunk ->
+            TtsApi(codec, cfg).synthesize(TEXT, voice) { chunk ->
                 val pcm = chunk.pcm ?: throw TtsError.Protocol("试听只支持 PCM 输出")
                 track.write(pcm, 0, pcm.size)
             }

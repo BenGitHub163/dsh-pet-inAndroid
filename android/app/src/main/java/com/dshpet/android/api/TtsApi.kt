@@ -3,6 +3,7 @@ package com.dshpet.android.api
 import com.dshpet.android.voice.AudioChunk
 import com.dshpet.android.voice.TtsConfig
 import com.dshpet.android.voice.TtsError
+import com.dshpet.android.voice.TtsProvider
 import com.dshpet.android.voice.VoiceProfile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -23,11 +24,14 @@ data class TtsHttpSpec(
 )
 
 /**
- * 各家 TTS 服务商的报文协议（拼 body / 切流）。实现类是 [BreezeApi] / [DoubaoApi] / [OpenAiApi]。
- * 不允许出现 `Request.Builder` / `newCall`；鉴权由 [TtsApi] 从 KeyFactory 注入。
+ * 各家 TTS 报文协议。实现类是 [BreezeApi] / [DoubaoApi] / [OpenAiApi]。
+ * 不允许 `Request.Builder` / `newCall`；鉴权头由 [authHeaders] 从 KeyFactory 给出，[TtsApi] 发出。
  */
 interface TtsCodec {
     val id: String
+    fun displayName(cfg: TtsConfig): String
+    fun isConfigured(cfg: TtsConfig): Boolean
+    fun authHeaders(cfg: TtsConfig): Map<String, String>
     fun request(text: String, voice: VoiceProfile, cfg: TtsConfig): TtsHttpSpec
     fun onResponseHeaders(headers: Map<String, String>) {}
     fun decodeLine(line: String): ByteArray? = null
@@ -36,18 +40,25 @@ interface TtsCodec {
 }
 
 /**
- * **TTS HTTP**：唯一发合成请求的地方。各家报文走对应 *Api（实现 [TtsCodec]）。
+ * TTS HTTP，同时作为云端合成的 [TtsProvider]。系统 TTS 仍在 voice/providers。
  */
-class TtsApi(private val codec: TtsCodec) {
+class TtsApi(
+    private val codec: TtsCodec,
+    private val cfg: TtsConfig,
+) : TtsProvider {
 
     private val activeCall = AtomicReference<okhttp3.Call?>(null)
 
-    suspend fun synthesize(
+    override val id: String get() = codec.id
+    override val displayName: String get() = codec.displayName(cfg)
+    override fun isConfigured(): Boolean = codec.isConfigured(cfg)
+
+    override suspend fun synthesize(
         text: String,
         voice: VoiceProfile,
-        cfg: TtsConfig,
         onChunk: (AudioChunk) -> Unit,
     ) = withContext(Dispatchers.IO) {
+        if (!isConfigured()) throw TtsError.NotConfigured()
         if (text.isBlank()) return@withContext
         val spec = applyAuth(codec.request(text, voice, cfg))
         val body = spec.bodyJson.toRequestBody(JSON)
@@ -138,19 +149,8 @@ class TtsApi(private val codec: TtsCodec) {
         else -> TtsError.Protocol("HTTP $code $err")
     }
 
-    /** 鉴权头由本类从 KeyFactory 注入，codec 只拼报文、不碰 key。 */
     private fun applyAuth(spec: TtsHttpSpec): TtsHttpSpec {
-        val keys = com.dshpet.android.data.KeyFactory.current()
-        val auth = when (codec.id) {
-            "breeze" -> keys.breeze.takeIf { it.isNotBlank() }?.let { mapOf(BreezeApi.HEADER_KEY to it) }.orEmpty()
-            "volcengine" -> when {
-                keys.doubao.isNotBlank() -> mapOf(DoubaoApi.HEADER_KEY to keys.doubao)
-                keys.doubaoAppId.isNotBlank() -> mapOf("X-Api-App-Id" to keys.doubaoAppId)
-                else -> emptyMap()
-            }
-            "openai" -> keys.deepseek.takeIf { it.isNotBlank() }?.let { mapOf("Authorization" to "Bearer $it") }.orEmpty()
-            else -> emptyMap()
-        }
+        val auth = codec.authHeaders(cfg)
         return if (auth.isEmpty()) spec else spec.copy(headers = spec.headers + auth)
     }
 

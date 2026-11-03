@@ -86,6 +86,5 @@ data class TtsConfig(
     val path: String = "",
     val resourceId: String = "",
     val appId: String = "",
-    val accessKey: String = "",
     val extra: Map<String, String> = emptyMap(),
 )

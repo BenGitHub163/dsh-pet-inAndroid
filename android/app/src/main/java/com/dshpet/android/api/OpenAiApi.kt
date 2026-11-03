@@ -12,6 +12,17 @@ class OpenAiApi : TtsCodec {
 
     override val id: String = "openai"
 
+    override fun displayName(cfg: TtsConfig): String =
+        cfg.extra["display_name"] ?: "OpenAI 兼容 TTS"
+
+    override fun isConfigured(cfg: TtsConfig): Boolean =
+        cfg.baseUrl.isNotBlank() && com.dshpet.android.data.KeyFactory.current().hasDeepseek
+
+    override fun authHeaders(cfg: TtsConfig): Map<String, String> {
+        val key = com.dshpet.android.data.KeyFactory.current().deepseek
+        return if (key.isBlank()) emptyMap() else mapOf("Authorization" to "Bearer $key")
+    }
+
     override fun request(text: String, voice: VoiceProfile, cfg: TtsConfig): TtsHttpSpec {
         if (cfg.baseUrl.isBlank()) throw TtsError.NotConfigured()
         val format = cfg.extra["format"]?.takeIf { it.isNotBlank() }?.lowercase() ?: "pcm"
