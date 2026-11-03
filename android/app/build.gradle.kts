@@ -5,6 +5,8 @@ import java.util.Date
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    // 日志 AOP：编译期给 @TraceLog 方法插 enter/exit（实现见 buildSrc/LogAopPlugin.kt）
+    id("log-aop")
 }
 
 android {

@@ -64,6 +64,7 @@ object VoiceTtsFactory {
         TtsEngines.createWithFallback(ctx, configFor(s, moodRate, moodLoud))
 
     /** 直接按"当前设置"创建（非测试路径的便捷入口） */
+    @com.dshpet.android.util.TraceLog(module = "TTS", level = "D")
     fun createCurrent(ctx: Context, moodRate: Int = 0, moodLoud: Int = 0): TtsProvider =
         create(ctx, VoiceSettingsStore.get(ctx).load(), moodRate, moodLoud)
 

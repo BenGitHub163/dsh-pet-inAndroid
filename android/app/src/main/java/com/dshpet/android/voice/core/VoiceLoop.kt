@@ -181,6 +181,7 @@ class VoiceLoop(context: Context) {
         }
     }
 
+    @com.dshpet.android.util.TraceLog(module = "VOICE", level = "I")
     fun start(s: VoiceSettings) {
         if (job?.isActive == true) return
         settings = s
@@ -194,6 +195,7 @@ class VoiceLoop(context: Context) {
         startSettingsWatcher()
     }
 
+    @com.dshpet.android.util.TraceLog(module = "VOICE", level = "I")
     fun stop() {
         // 顺序很重要：先掐掉在途的合成请求（TtsChain → Volcengine 的 OkHttp call / 系统 TTS），
         // 再让播放器令牌失效并立刻静音。少了第一步，"停止"之后仍在计费。
@@ -219,6 +221,7 @@ class VoiceLoop(context: Context) {
      *   用户文本 → DeepSeek 流式回复 → 分句 → TTS → 播放 → 抽取记忆
      * 语音循环会被停下来，避免麦克风和播放打架。
      */
+    @com.dshpet.android.util.TraceLog(module = "VOICE", level = "D")
     fun submitText(text: String, override: VoiceSettings? = null) {
         val t = text.trim()
         if (t.isBlank()) return

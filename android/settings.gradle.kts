@@ -1,3 +1,5 @@
+includeBuild("gradle/log-aop")
+
 pluginManagement {
     repositories {
         google {

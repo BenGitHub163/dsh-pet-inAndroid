@@ -37,6 +37,7 @@ object VoiceRuntime {
     }
 
     /** 启动（幂等）：已在跑就返回现有实例 */
+    @com.dshpet.android.util.TraceLog(module = "VOICE", level = "D")
     fun ensureStarted(ctx: Context): VoiceLoop? {
         loop?.let { if (VoiceLoop.running) return it }
         val st = buildSettings(ctx)
