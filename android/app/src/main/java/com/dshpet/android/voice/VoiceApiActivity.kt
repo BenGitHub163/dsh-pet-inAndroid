@@ -53,17 +53,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dshpet.android.R
+import com.dshpet.android.api.TtsApi
 import com.dshpet.android.util.ProvideComposeHost
 import com.dshpet.android.voice.core.VoiceLoop
-import com.dshpet.android.voice.providers.VolcengineTtsProvider
 import com.dshpet.android.voice.core.VoiceSettings
 import com.dshpet.android.voice.core.VoiceSettingsStore
 import com.dshpet.android.voice.core.VoiceRuntime
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody.Companion.toRequestBody
 
 /**
  * **语音 API 二级页**（AI 对话 → 语音 API → 这里）。
@@ -300,7 +298,7 @@ private fun DoubaoPage(
                     previewing = true
                     msg = "合成中…"
                     scope.launch {
-                        val r = runCatching { DoubaoPreview.play(s) }
+                        val r = runCatching { TtsPreview.play(doubaoPreviewCfg(s), doubaoPreviewVoice(s)) }
                         previewing = false
                         msg = r.fold({ "播放完成" }, { e -> "失败：${e.message}" })
                     }
@@ -394,7 +392,7 @@ private fun BreezePage(
                             if (s.breezeKey.isBlank()) { msg = "先填 Key"; return@TextButton }
                             msg = "试听中…"
                             scope.launch {
-                                val r = runCatching { BreezePreview.play(s.breezeKey, v.first) }
+                                val r = runCatching { TtsPreview.play(breezePreviewCfg(s.breezeKey), VoiceProfile(voiceId = v.first)) }
                                 msg = r.fold({ "播放完成" }, { e -> "失败：${e.message}" })
                             }
                         }) { Text("试听", fontSize = 11.sp) }
@@ -489,77 +487,62 @@ private fun loadDoubaoVoices(ctx: android.content.Context): List<Triple<String, 
         }
     }.getOrElse { emptyList() }
 
-/** 豆包试听：走项目里已有的 [VolcengineTtsProvider]，PCM 直接进 AudioTrack */
-private object DoubaoPreview {
+/** 豆包试听的配置：固定 pcm（延迟最低），其余取当前设置 */
+private fun doubaoPreviewCfg(s: VoiceSettings): TtsConfig = TtsConfig(
+    providerId = TtsEngines.ID_VOLCENGINE,
+    apiKey = s.doubaoKey,
+    resourceId = s.resourceId,
+    extra = mapOf(
+        "format" to "pcm",
+        "sample_rate" to s.sampleRate.toString(),
+        "speech_rate" to s.speechRate.toString(),
+        "loudness_rate" to s.loudnessRate.toString(),
+        "emotion" to s.emotion,
+        "emotion_scale" to s.emotionScale.toString(),
+    ),
+)
 
-    suspend fun play(s: VoiceSettings) = withContext(Dispatchers.IO) {
-        val cfg = TtsConfig(
-            providerId = TtsEngines.ID_VOLCENGINE,
-            apiKey = s.doubaoKey,
-            resourceId = s.resourceId,
-            extra = mapOf(
-                "format" to "pcm",
-                "sample_rate" to s.sampleRate.toString(),
-                "speech_rate" to s.speechRate.toString(),
-                "loudness_rate" to s.loudnessRate.toString(),
-                "emotion" to s.emotion,
-                "emotion_scale" to s.emotionScale.toString(),
-            ),
-        )
-        val provider = VolcengineTtsProvider(cfg)
-        val track = newTrack(s.sampleRate)
+private fun doubaoPreviewVoice(s: VoiceSettings): VoiceProfile = VoiceProfile(
+    voiceId = s.voiceId,
+    emotion = s.emotion.ifBlank { null },
+    emotionScale = s.emotionScale,
+)
+
+/** Breeze 试听的配置：固定 pcm / 24k / breeze-tts-2（与说话时一致） */
+private fun breezePreviewCfg(key: String): TtsConfig = TtsConfig(
+    providerId = TtsEngines.ID_BREEZE,
+    apiKey = key,
+    extra = mapOf(
+        "format" to "pcm",
+        "sample_rate" to "24000",
+        "model_id" to "breeze-tts-2",
+    ),
+)
+
+/**
+ * **试听**：唯一的实现，两家只是配置不同。
+ *
+ * 报文交给 `TtsCodec`、HTTP 交给 `TtsApi`，这里只留"PCM 直接写 AudioTrack"这一件事 ——
+ * 原来 DoubaoPreview / BreezePreview 各抄了一份 Request.Builder + 读流 + 建轨。
+ */
+private object TtsPreview {
+
+    /** 试听固定一句话，方便对比音色 */
+    private const val TEXT = "你好呀，我是你的桌宠，这是当前音色的试听。"
+
+    suspend fun play(cfg: TtsConfig, voice: VoiceProfile) = withContext(Dispatchers.IO) {
+        val codec = TtsEngines.codec(cfg.providerId) ?: error("${cfg.providerId} 没有编解码器，无法试听")
+        val rate = cfg.extra["sample_rate"]?.toIntOrNull() ?: 24000
+        val track = newTrack(rate)
         try {
             track.play()
-            provider.synthesize(
-                "你好呀，我是你的桌宠，这是当前音色的试听。",
-                VoiceProfile(
-                    voiceId = s.voiceId,
-                    emotion = s.emotion.ifBlank { null },
-                    emotionScale = s.emotionScale,
-                ),
-            ) { chunk ->
-                chunk.pcm?.let { track.write(it, 0, it.size) }
+            TtsApi(codec).synthesize(TEXT, voice, cfg) { chunk ->
+                val pcm = chunk.pcm ?: throw TtsError.Protocol("试听只支持 PCM 输出")
+                track.write(pcm, 0, pcm.size)
             }
         } finally {
             runCatching { track.stop() }
             runCatching { track.release() }
-        }
-    }
-}
-
-/** Breeze 试听 / 列表：直接用 OkHttp 打文档里的接口 */
-private object BreezePreview {
-
-private val client = com.dshpet.android.api.ApiClient.read(60)
-
-    /** `POST /v1/text-to-speech/{id}/stream?output_format=pcm` → AudioTrack（24k/mono/s16le） */
-    suspend fun play(key: String, voiceId: String) = withContext(Dispatchers.IO) {
-        val body = org.json.JSONObject()
-            .put("text", "你好呀，我是你的桌宠，这是当前音色的试听。")
-            .put("model_id", "breeze-tts-2")
-            .toString()
-        val req = okhttp3.Request.Builder()
-            .url(com.dshpet.android.api.BreezeApi.ttsStreamUrl(voiceId, "pcm"))
-            .addHeader(com.dshpet.android.api.BreezeApi.HEADER_KEY, key)
-            .post(body.toRequestBody("application/json".toMediaType()))
-            .build()
-        client.newCall(req).execute().use { resp ->
-            if (!resp.isSuccessful) {
-                error("HTTP ${resp.code}: ${resp.body?.string()?.take(120)}")
-            }
-            val track = newTrack(24000)
-            try {
-                track.play()
-                val src = resp.body!!.source()
-                val buf = ByteArray(4096)
-                while (!src.exhausted()) {
-                    val n = src.read(buf)
-                    if (n > 0) track.write(buf, 0, n)
-                }
-            } finally {
-                runCatching { track.stop() }
-                runCatching { track.release() }
-            }
         }
     }
 }
