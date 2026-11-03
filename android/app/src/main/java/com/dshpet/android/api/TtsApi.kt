@@ -6,9 +6,10 @@ import com.dshpet.android.voice.TtsError
 import com.dshpet.android.voice.VoiceProfile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.Response
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -31,7 +32,7 @@ class TtsApi(private val codec: TtsCodec) {
     ) = withContext(Dispatchers.IO) {
         if (text.isBlank()) return@withContext
         val spec = codec.request(text, voice, cfg)
-        val body = spec.bodyJson.toRequestBody("application/json".toMediaType())
+        val body = spec.bodyJson.toRequestBody(JSON)
         val req = Request.Builder()
             .url(spec.url)
             .apply { spec.headers.forEach { (k, v) -> addHeader(k, v) } }
@@ -44,32 +45,25 @@ class TtsApi(private val codec: TtsCodec) {
             call.execute().use { resp ->
                 if (!resp.isSuccessful) {
                     val err = runCatching { resp.body?.string().orEmpty() }.getOrDefault("")
-                    throw when (resp.code) {
-                        401, 403 -> TtsError.Auth("鉴权失败 HTTP ${resp.code}")
-                        402 -> TtsError.Auth("额度不足 HTTP 402 $err")
-                        429 -> TtsError.RateLimited("限流 HTTP 429 $err")
-                        in 500..599 -> TtsError.Server("服务端错误 ${resp.code} $err")
-                        else -> TtsError.Protocol("HTTP ${resp.code} $err")
-                    }
+                    throw errorFor(resp.code, err)
                 }
-                val sampleRate = cfg.extra["sample_rate"]?.toIntOrNull() ?: 24000
-                if (!spec.stream) {
+                val sampleRate = cfg.extra["sample_rate"]?.toIntOrNull() ?: DEFAULT_RATE
+                codec.onResponseHeaders(allHeaders(resp))
+
+                if (spec.stream) {
+                    if (spec.lineMode) readLines(resp, sampleRate, spec.pcm, onChunk)
+                    else readBinary(resp, sampleRate, spec.pcm, onChunk)
+                } else {
                     val all = resp.body?.bytes() ?: ByteArray(0)
                     val out = codec.decodeChunk(all) ?: all
-                    if (out.isNotEmpty()) onChunk(AudioChunk(pcm = out, sampleRate = sampleRate))
-                    return@use
+                    if (out.isNotEmpty()) onChunk(chunkOf(out, spec.pcm, sampleRate))
                 }
-                val src = resp.body?.source() ?: throw TtsError.Protocol("空响应")
-                val buf = ByteArray(8192)
-                while (!src.exhausted()) {
-                    val n = src.read(buf)
-                    if (n <= 0) break
-                    val raw = buf.copyOf(n)
-                    val out = codec.decodeChunk(raw)
-                    if (out != null && out.isNotEmpty()) onChunk(AudioChunk(pcm = out, sampleRate = sampleRate))
-                }
+                codec.onStreamEnd()
+                onChunk(AudioChunk(isLast = true, sampleRate = sampleRate))
             }
         } catch (e: TtsError) {
+            throw e
+        } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Throwable) {
             if (call.isCanceled()) throw TtsError.Cancelled() else throw TtsError.Network(e.message ?: "网络错误", e)
@@ -78,8 +72,62 @@ class TtsApi(private val codec: TtsCodec) {
         }
     }
 
+    /** 行式流（SSE / NDJSON）：一行一帧，控制帧由 codec 返回 null 丢掉 */
+    private fun readLines(
+        resp: Response,
+        sampleRate: Int,
+        pcm: Boolean,
+        onChunk: (AudioChunk) -> Unit,
+    ) {
+        val src = resp.body?.source() ?: throw TtsError.Protocol("空响应")
+        while (true) {
+            val line = (src.readUtf8Line() ?: break).trim()
+            if (line.isEmpty()) continue
+            val out = codec.decodeLine(line) ?: continue
+            if (out.isNotEmpty()) onChunk(chunkOf(out, pcm, sampleRate))
+        }
+    }
+
+    /** 二进制分块：PCM 直推，MP3/AAC 打上 encoded 交给播放层解码 */
+    private fun readBinary(
+        resp: Response,
+        sampleRate: Int,
+        pcm: Boolean,
+        onChunk: (AudioChunk) -> Unit,
+    ) {
+        val src = resp.body?.source() ?: throw TtsError.Protocol("空响应")
+        val buf = ByteArray(8192)
+        while (true) {
+            val n = src.read(buf)
+            if (n <= 0) break
+            val out = codec.decodeChunk(buf.copyOf(n))
+            if (out != null && out.isNotEmpty()) onChunk(chunkOf(out, pcm, sampleRate))
+        }
+    }
+
+    private fun chunkOf(bytes: ByteArray, pcm: Boolean, sampleRate: Int): AudioChunk =
+        if (pcm) AudioChunk(pcm = bytes, sampleRate = sampleRate)
+        else AudioChunk(encoded = bytes, sampleRate = sampleRate)
+
+    private fun allHeaders(resp: Response): Map<String, String> =
+        resp.headers.names().associate { it.lowercase() to resp.header(it).orEmpty() }
+
+    private fun errorFor(code: Int, err: String): TtsError = when (code) {
+        401, 403 -> TtsError.Auth("鉴权失败 HTTP $code $err")
+        402 -> TtsError.Auth("额度不足 HTTP 402 $err")
+        429 -> TtsError.RateLimited("限流 HTTP 429 $err")
+        in 500..599 -> TtsError.Server("服务端错误 $code $err")
+        else -> TtsError.Protocol("HTTP $code $err")
+    }
+
     /** 打断：立刻断掉底层连接 */
     fun cancel() {
         activeCall.getAndSet(null)?.cancel()
+    }
+
+    private companion object {
+        /** 各家默认都是 24k；`cfg.extra["sample_rate"]` 显式给了就用它 */
+        const val DEFAULT_RATE = 24000
+        val JSON = "application/json".toMediaType()
     }
 }

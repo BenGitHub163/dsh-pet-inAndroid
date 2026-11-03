@@ -21,6 +21,7 @@ class BreezeCodec : TtsCodec {
             headers = mapOf(BreezeApi.HEADER_KEY to cfg.apiKey),
             bodyJson = body,
             stream = true,
+            pcm = format == "pcm",
         )
     }
 
