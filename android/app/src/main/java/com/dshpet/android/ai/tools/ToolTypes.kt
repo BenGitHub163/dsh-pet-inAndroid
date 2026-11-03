@@ -186,6 +186,14 @@ interface ToolContext {
     /** 本轮是否还有效（被打断后为 false）。工具在不可逆动作前应检查 */
     fun isActive(): Boolean
 
+    /**
+     * 当前是否处于语音对话中。
+     *
+     * `close_conversation` 判 `not_in_voice_mode` 要用它，system 提示里"当前对话状态"
+     * 那段也来自这里（SPEC §4.6）。
+     */
+    fun isVoiceActive(): Boolean
+
     /** 工具想直接说一句（走对话同一条音频通道，不新建 session） */
     fun say(text: String)
 
