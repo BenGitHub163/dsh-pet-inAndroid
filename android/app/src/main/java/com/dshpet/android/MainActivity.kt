@@ -1194,9 +1194,9 @@ private fun ColorSliderRow(label: String, value: Float, onChange: (Float) -> Uni
 private fun AiTab(ctx: android.content.Context, cfg: PetConfig, scope: kotlinx.coroutines.CoroutineScope) {
     val agentLink by cfg.flowBool("agent_link_enabled", false).collectAsState(initial = false)
     val name by cfg.flowString("chat_provider_name", "DeepSeek").collectAsState(initial = "DeepSeek")
-    val baseUrl by cfg.flowString("chat_base_url", "https://api.deepseek.com").collectAsState(initial = "https://api.deepseek.com")
-    val chatPath by cfg.flowString("chat_chat_path", "/v1/chat/completions").collectAsState(initial = "/v1/chat/completions")
-    val model by cfg.flowString("chat_model", "deepseek-chat").collectAsState(initial = "deepseek-chat")
+    val baseUrl by cfg.flowString("chat_base_url", com.dshpet.android.api.ApiDefaults.CHAT_BASE_URL).collectAsState(initial = com.dshpet.android.api.ApiDefaults.CHAT_BASE_URL)
+    val chatPath by cfg.flowString("chat_chat_path", com.dshpet.android.api.ApiDefaults.CHAT_PATH).collectAsState(initial = com.dshpet.android.api.ApiDefaults.CHAT_PATH)
+    val model by cfg.flowString("chat_model", com.dshpet.android.api.ApiDefaults.CHAT_MODEL).collectAsState(initial = com.dshpet.android.api.ApiDefaults.CHAT_MODEL)
     val apiKey by cfg.flowString("chat_api_key", com.dshpet.android.data.KeyFactory.defaults().deepseek).collectAsState(initial = com.dshpet.android.data.KeyFactory.defaults().deepseek)
     val temperature by cfg.flowDouble("chat_temperature", 0.7).collectAsState(initial = 0.7)
     val maxTokens by cfg.flowInt("chat_max_tokens", 2048).collectAsState(initial = 2048)

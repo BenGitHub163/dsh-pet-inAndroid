@@ -1,5 +1,7 @@
 package com.dshpet.android.data
 
+import com.dshpet.android.api.ApiDefaults
+
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
@@ -257,9 +259,9 @@ class PetConfig(private val ctx: Context) {
     suspend fun overlayPermissionGranted() = read(K_OVERLAY_PERM, false)
     suspend fun petRunning() = read(K_PET_RUNNING, false)
 
-    suspend fun chatBaseUrl() = read(K_CHAT_BASE_URL, "https://api.deepseek.com")
-    suspend fun chatPath() = read(K_CHAT_PATH, "/v1/chat/completions")
-    suspend fun chatModel() = read(K_CHAT_MODEL, "deepseek-chat")
+    suspend fun chatBaseUrl() = read(K_CHAT_BASE_URL, ApiDefaults.CHAT_BASE_URL)
+    suspend fun chatPath() = read(K_CHAT_PATH, ApiDefaults.CHAT_PATH)
+    suspend fun chatModel() = read(K_CHAT_MODEL, ApiDefaults.CHAT_MODEL)
     /** 写入后立即刷新内存快照（不用等下次启动） */
     suspend fun refreshSnap() {
         runCatching {

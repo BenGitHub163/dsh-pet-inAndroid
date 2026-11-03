@@ -21,9 +21,9 @@ import kotlin.coroutines.resume
 class ChatApi(private val ctx: Context) {
 
     companion object {
-        const val DEFAULT_BASE_URL = "https://api.deepseek.com"
-        const val DEFAULT_PATH = "/v1/chat/completions"
-        const val DEFAULT_MODEL = "deepseek-chat"
+        const val DEFAULT_BASE_URL = com.dshpet.android.api.ApiDefaults.CHAT_BASE_URL
+        const val DEFAULT_PATH = com.dshpet.android.api.ApiDefaults.CHAT_PATH
+        const val DEFAULT_MODEL = com.dshpet.android.api.ApiDefaults.CHAT_MODEL
     }
 
     /** 同包内的其它接口（视觉/记忆等）复用同一套端点与鉴权 */
