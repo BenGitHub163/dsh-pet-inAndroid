@@ -8,12 +8,6 @@ import com.dshpet.android.voice.TtsProvider
 import com.dshpet.android.voice.VoiceProfile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.Call
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONObject
 
 /**
  * Breeze Blue TTS（https://docs.breezeblue.ai）。
@@ -34,9 +28,6 @@ class BreezeTtsProvider(private val cfg: TtsConfig) : TtsProvider {
     override val id: String get() = TtsEngines.ID_BREEZE
     override val displayName: String get() = "Breeze Blue"
 
-    @Volatile
-    private var call: Call? = null
-
     override fun isConfigured(): Boolean = cfg.apiKey.isNotBlank()
 
     /** HTTP 与错误映射已重构进 api/TtsApi；这里只剩"这家服务商怎么编解码"的委托 */
@@ -51,12 +42,6 @@ class BreezeTtsProvider(private val cfg: TtsConfig) : TtsProvider {
         api.synthesize(text, voice, cfg, onChunk)
     }
 
-    override fun cancel() {
-        runCatching { call?.cancel() }
-        call = null
-    }
 
-    private companion object {
-val client: OkHttpClient by lazy { com.dshpet.android.api.ApiClient.read(60) }
-    }
+    override fun cancel() = api.cancel()
 }
