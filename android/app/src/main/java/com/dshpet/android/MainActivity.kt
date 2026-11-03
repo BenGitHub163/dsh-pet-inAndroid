@@ -1369,85 +1369,25 @@ private fun AiTab(ctx: android.content.Context, cfg: PetConfig, scope: kotlinx.c
             }
         }
 
-        Section("语音 API（豆包 TTS）") {
+        Section("语音 API") {
             val vStore = remember { com.dshpet.android.voice.core.VoiceSettingsStore(ctx) }
-            var vKey by remember { mutableStateOf(vStore.load().doubaoKey) }
-            var vRid by remember { mutableStateOf(vStore.load().resourceId) }
-            var vVoice by remember { mutableStateOf(vStore.load().voiceId) }
-            Text(
-                "语音合成单独配置；语言模型与上面共用一套，语音对话和文字对话都走它。",
-                fontSize = 11.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-            )
-            OutlinedTextField(
-                vKey,
-                {
-                    vKey = it
-                    val cur = vStore.load()
-                    vStore.save(cur.copy(doubaoKey = it, resourceId = vRid, voiceId = vVoice))
-                    scope.launch { cfg.setDoubaoApiKey(it) }
+            var vs by remember { mutableStateOf(vStore.load()) }
+            // 从二级页返回时刷新摘要
+            LaunchedEffect(resumeTick) { vs = vStore.load() }
+            SettingRow(
+                "语音服务商",
+                com.dshpet.android.voice.core.VoiceSettings.providerName(vs.provider) +
+                    " ｜ 音色 " + vs.voiceId +
+                    " ｜ " + (if (vs.emotion.isBlank()) "无情绪" else "情绪 " + vs.emotion + "/" + vs.emotionScale) +
+                    " ｜ 语速 " + vs.speechRate + " · 音量 " + vs.loudnessRate,
+                trailing = {
+                    TextButton(onClick = {
+                        ctx.startActivity(
+                            Intent(ctx, com.dshpet.android.voice.VoiceApiActivity::class.java)
+                        )
+                    }) { Text("设置") }
                 },
-                label = { Text("豆包 API Key") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             )
-            var ridMenu by remember { mutableStateOf(false) }
-            androidx.compose.foundation.layout.Box(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp)
-            ) {
-                OutlinedButton(onClick = { ridMenu = true }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Resource-Id：" + vRid)
-                }
-                androidx.compose.material3.DropdownMenu(expanded = ridMenu, onDismissRequest = { ridMenu = false }) {
-                    listOf("seed-tts-2.0", "seed-tts-1.0", "seed-icl-2.0").forEach { opt ->
-                        androidx.compose.material3.DropdownMenuItem(
-                            text = { Text(opt) },
-                            onClick = {
-                                ridMenu = false
-                                vRid = opt
-                                val cur = vStore.load()
-                                vStore.save(cur.copy(resourceId = opt))
-                                // 必须同时写 PetConfig：VoiceRuntime.buildSettings() 以 PetConfig 为准，
-                                // 只写 VoiceSettings 会被它覆盖掉（Resource-Id 改不动的根因）
-                                scope.launch {
-                                    cfg.setDoubaoResourceId(opt)
-                                    restartVoiceIfRunning()
-                                }
-                            },
-                        )
-                    }
-                }
-            }
-            var voiceMenu by remember { mutableStateOf(false) }
-            // 音色表：唯一来源 [com.dshpet.android.voice.VoiceCatalog]（这里以前是第三份拷贝）
-            val voiceOptions = com.dshpet.android.voice.VoiceCatalog.VOICES
-            androidx.compose.foundation.layout.Box(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp)
-            ) {
-                OutlinedButton(onClick = { voiceMenu = true }, modifier = Modifier.fillMaxWidth()) {
-                    Text("音色：" + (voiceOptions.firstOrNull { it.first == vVoice }?.second ?: vVoice))
-                }
-                androidx.compose.material3.DropdownMenu(expanded = voiceMenu, onDismissRequest = { voiceMenu = false }) {
-                    voiceOptions.forEach { (id, label) ->
-                        androidx.compose.material3.DropdownMenuItem(
-                            text = { Text(label) },
-                            onClick = {
-                                voiceMenu = false
-                                vVoice = id
-                                val cur = vStore.load()
-                                vStore.save(cur.copy(voiceId = id))
-                                // 同上：音色的权威源是 PetConfig，否则下一次 buildSettings 又把默认音色盖回来
-                                scope.launch {
-                                    cfg.setDoubaoVoiceId(id)
-                                    com.dshpet.android.util.AppLog.u("语音", "音色已写入 PetConfig: $id")
-                                    restartVoiceIfRunning()
-                                }
-                            },
-                        )
-                    }
-                }
-            }
         }
         Section("工具") {
             // 每个 API 一行：「测试」+ 可选附加能力（由 ApiTargets 工厂给出，界面不硬编码）

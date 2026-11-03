@@ -222,6 +222,11 @@
             </intent-filter>
         </receiver>
 
+        <activity
+            android:name=".voice.VoiceApiActivity"
+            android:exported="false"
+            android:label="语音 API" />
+
         <!-- 语音链路自测（开发期用，正式发版前删除） -->
         <activity
             android:name=".voice.VoiceTestActivity"

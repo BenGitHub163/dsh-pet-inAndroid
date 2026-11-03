@@ -531,7 +531,10 @@ class VoiceLoop(context: Context) {
     }
 
     private fun buildTts(): TtsProvider {
-        val (rate, loud) = moodVoiceParams()
+        val (moodRate, moodLoud) = moodVoiceParams()
+        // 用户在「语音 API」里设的语速/音量与情绪偏移叠加（火山允许 -50..100）
+        val rate = (settings.speechRate + moodRate).coerceIn(-50, 100)
+        val loud = (settings.loudnessRate + moodLoud).coerceIn(-50, 100)
         val volc = VolcengineTtsProvider(
             TtsConfig(
                 providerId = TtsEngines.ID_VOLCENGINE,
@@ -542,6 +545,9 @@ class VoiceLoop(context: Context) {
                     "sample_rate" to settings.sampleRate.toString(),
                     "speech_rate" to rate.toString(),
                     "loudness_rate" to loud.toString(),
+                    // 情绪：空串 = 不带（provider 里会跳过空值），强度 1..5
+                    "emotion" to settings.emotion,
+                    "emotion_scale" to settings.emotionScale.toString(),
                 ),
             )
         )

@@ -25,9 +25,37 @@ data class VoiceSettings(
      *  2 = 详细：可以结合应用与停留情况主动关心（仍读不到任何应用内容）
      */
     val privacyLevel: Int = 1,
+
+    // ---------------- 语音服务商 & 音色参数（「语音 API」二级页） ----------------
+
+    /** 语音服务商：`volcengine`（豆包/火山）| `breeze`（Breeze Blue）| `system`（系统 TTS） */
+    val provider: String = PROVIDER_VOLCENGINE,
+    /** 豆包情绪：空串 = 不带情绪；happy/sad/angry/surprised/fear/hate/excited/neutral */
+    val emotion: String = "",
+    /** 豆包情绪强度 1..5（火山是非线性的） */
+    val emotionScale: Int = 4,
+    /** 语速 -50..100（0 = 正常，100 ≈ 2 倍） */
+    val speechRate: Int = 0,
+    /** 音量 -50..100（0 = 正常） */
+    val loudnessRate: Int = 0,
+    /** Breeze Blue API Key（brz_ 开头） */
+    val breezeKey: String = "",
+    /** Breeze Blue 音色 ID（voc_ 开头） */
+    val breezeVoiceId: String = "",
 ) {
     companion object {
         const val DEFAULT_VOICE = "zh_female_sajiaoxuemei_uranus_bigtts"
+
+        const val PROVIDER_VOLCENGINE = "volcengine"
+        const val PROVIDER_BREEZE = "breeze"
+        const val PROVIDER_SYSTEM = "system"
+
+        fun providerName(id: String): String = when (id) {
+            PROVIDER_VOLCENGINE -> "豆包（火山引擎）"
+            PROVIDER_BREEZE -> "Breeze Blue"
+            PROVIDER_SYSTEM -> "系统 TTS"
+            else -> id
+        }
     }
 }
 
@@ -48,6 +76,13 @@ class VoiceSettingsStore(private val ctx: Context) {
             autoplay = prefs.getBoolean(KEY_AUTOPLAY, d.autoplay),
             historyLimit = prefs.getInt(KEY_HISTORY, d.historyLimit),
             privacyLevel = prefs.getInt(KEY_PRIVACY, d.privacyLevel),
+            provider = prefs.getString(KEY_PROVIDER, d.provider) ?: d.provider,
+            emotion = prefs.getString(KEY_EMOTION, d.emotion) ?: d.emotion,
+            emotionScale = prefs.getInt(KEY_EMOTION_SCALE, d.emotionScale),
+            speechRate = prefs.getInt(KEY_SPEECH_RATE, d.speechRate),
+            loudnessRate = prefs.getInt(KEY_LOUDNESS_RATE, d.loudnessRate),
+            breezeKey = prefs.getString(KEY_BREEZE_KEY, d.breezeKey) ?: d.breezeKey,
+            breezeVoiceId = prefs.getString(KEY_BREEZE_VOICE, d.breezeVoiceId) ?: d.breezeVoiceId,
         )
     }
 
@@ -63,6 +98,13 @@ class VoiceSettingsStore(private val ctx: Context) {
             .putBoolean(KEY_AUTOPLAY, s.autoplay)
             .putInt(KEY_HISTORY, s.historyLimit)
             .putInt(KEY_PRIVACY, s.privacyLevel)
+            .putString(KEY_PROVIDER, s.provider)
+            .putString(KEY_EMOTION, s.emotion)
+            .putInt(KEY_EMOTION_SCALE, s.emotionScale)
+            .putInt(KEY_SPEECH_RATE, s.speechRate)
+            .putInt(KEY_LOUDNESS_RATE, s.loudnessRate)
+            .putString(KEY_BREEZE_KEY, s.breezeKey)
+            .putString(KEY_BREEZE_VOICE, s.breezeVoiceId)
             .apply()
     }
 
@@ -77,5 +119,12 @@ class VoiceSettingsStore(private val ctx: Context) {
         const val KEY_AUTOPLAY = "autoplay"
         const val KEY_HISTORY = "history_limit"
         const val KEY_PRIVACY = "privacy_level"
+        const val KEY_PROVIDER = "tts_provider"
+        const val KEY_EMOTION = "tts_emotion"
+        const val KEY_EMOTION_SCALE = "tts_emotion_scale"
+        const val KEY_SPEECH_RATE = "tts_speech_rate"
+        const val KEY_LOUDNESS_RATE = "tts_loudness_rate"
+        const val KEY_BREEZE_KEY = "breeze_key"
+        const val KEY_BREEZE_VOICE = "breeze_voice_id"
     }
 }
