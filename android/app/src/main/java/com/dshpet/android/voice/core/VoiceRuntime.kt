@@ -21,16 +21,18 @@ object VoiceRuntime {
 
     /** 组装最终配置：DataStore 为准，缓存兜底 */
     fun buildSettings(ctx: Context): VoiceSettings {
-        var st = VoiceSettingsStore(ctx).load()
+        // **以 SharedPreferences 里的 VoiceSettings 为准**（唯一数据源，UI 改完立刻生效）；
+        // PetConfig 只做老版本迁移兜底：store 里为空时才用 PetConfig 的值。
+        var st = VoiceSettingsStore.get(ctx).load()
         val pet = PetConfig.get(ctx.applicationContext)
         val dk = runCatching { kotlinx.coroutines.runBlocking { pet.chatApiKey() } }.getOrDefault("")
         val bk = runCatching { kotlinx.coroutines.runBlocking { pet.doubaoApiKey() } }.getOrDefault("")
         val rid = runCatching { kotlinx.coroutines.runBlocking { pet.doubaoResourceId() } }.getOrDefault("")
         val vid = runCatching { kotlinx.coroutines.runBlocking { pet.doubaoVoiceId() } }.getOrDefault("")
-        if (dk.isNotBlank()) st = st.copy(deepseekKey = dk)
-        if (bk.isNotBlank()) st = st.copy(doubaoKey = bk)
-        if (rid.isNotBlank()) st = st.copy(resourceId = rid)
-        if (vid.isNotBlank()) st = st.copy(voiceId = vid)
+        if (st.deepseekKey.isBlank() && dk.isNotBlank()) st = st.copy(deepseekKey = dk)
+        if (st.doubaoKey.isBlank() && bk.isNotBlank()) st = st.copy(doubaoKey = bk)
+        if (st.resourceId.isBlank() && rid.isNotBlank()) st = st.copy(resourceId = rid)
+        if (st.voiceId.isBlank() && vid.isNotBlank()) st = st.copy(voiceId = vid)
         return st
     }
 

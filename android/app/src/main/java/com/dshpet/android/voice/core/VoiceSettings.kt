@@ -1,6 +1,13 @@
 package com.dshpet.android.voice.core
 
 import android.content.Context
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 /**
  * 语音相关的用户配置（**Repository 模式**）。
@@ -61,7 +68,26 @@ data class VoiceSettings(
 
 class VoiceSettingsStore(private val ctx: Context) {
 
-    private val prefs = ctx.getSharedPreferences("voice_settings", Context.MODE_PRIVATE)
+    private val appCtx = ctx.applicationContext
+    private val prefs = appCtx.getSharedPreferences("voice_settings", Context.MODE_PRIVATE)
+
+    /**
+     * **唯一的数据源（响应式）**：设置页改一下，桌宠那边的 [com.dshpet.android.voice.core.VoiceLoop]
+     * 立刻收到，不需要"重启语音/重进页面"。
+     *
+     * 联动与解耦：
+     *  - 联动 = 所有消费方（VoiceLoop / 设置页摘要 / 试听）都订阅这条 flow；
+     *  - 解耦 = 谁都不直接调用谁，只依赖 flow 与 [save]。
+     */
+    private val _flow = MutableStateFlow(load())
+    val flow: StateFlow<VoiceSettings> = _flow.asStateFlow()
+
+    init {
+        // 别的进程/旧代码直接改 prefs 时也能同步（SharedPreferences 是进程内广播）
+        prefs.registerOnSharedPreferenceChangeListener { _, _ ->
+            runCatching { _flow.value = load() }
+        }
+    }
 
     fun load(): VoiceSettings {
         val d = VoiceSettings()
@@ -106,9 +132,31 @@ class VoiceSettingsStore(private val ctx: Context) {
             .putString(KEY_BREEZE_KEY, s.breezeKey)
             .putString(KEY_BREEZE_VOICE, s.breezeVoiceId)
             .apply()
+        // 立刻推给订阅者（apply() 是异步落盘，listener 可能晚一拍）
+        _flow.value = s
+        // 老代码（QuickTts / API 测试 / VoiceRuntime 的兜底）读的是 PetConfig，这里保持一致
+        SYNC_SCOPE.launch {
+            runCatching {
+                val pet = com.dshpet.android.data.PetConfig.get(appCtx)
+                pet.setDoubaoApiKey(s.doubaoKey)
+                pet.setDoubaoResourceId(s.resourceId)
+                pet.setDoubaoVoiceId(s.voiceId)
+            }
+        }
     }
 
-    private companion object {
+    companion object {
+        @Volatile
+        private var inst: VoiceSettingsStore? = null
+
+        /** 进程内单例：UI 和 Service 用同一个实例，才能共享同一条 flow */
+        fun get(ctx: Context): VoiceSettingsStore =
+            inst ?: synchronized(this) {
+                inst ?: VoiceSettingsStore(ctx.applicationContext).also { inst = it }
+            }
+
+        private val SYNC_SCOPE = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
         const val KEY_DOUBAO = "doubao_key"
         const val KEY_DEEPSEEK = "deepseek_key"
         const val KEY_VOICE = "voice_id"

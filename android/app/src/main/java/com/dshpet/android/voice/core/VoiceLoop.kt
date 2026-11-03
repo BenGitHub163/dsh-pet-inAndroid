@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -93,7 +94,10 @@ class VoiceLoop(context: Context) {
         get() = "好感 ${mood.affection}｜心情 ${mood.mood}｜恼火 ${mood.annoyance}"
 
     fun setPrivacyLevel(level: Int) {
-        settings = settings.copy(privacyLevel = level.coerceIn(0, 2))
+        val v = level.coerceIn(0, 2)
+        settings = settings.copy(privacyLevel = v)
+        // 同步进唯一数据源，否则设置监听器会把这次修改改回去
+        runCatching { VoiceSettingsStore.get(appCtx).save(settings) }
     }
 
     /** 给 UI 用的记忆入口 */
@@ -118,6 +122,9 @@ class VoiceLoop(context: Context) {
     fun openUsageAccessSettings() = deviceContext.openUsageAccessSettings()
 
     private var settings = VoiceSettings()
+
+    /** 监听设置变化（UI 一改，下一句就用新音色/新语速） */
+    private var settingsJob: Job? = null
     private var job: Job? = null
 
     /**
@@ -144,6 +151,36 @@ class VoiceLoop(context: Context) {
 
     // ---------------- 对外 ----------------
 
+    /**
+     * **配置热更新**：订阅 [VoiceSettingsStore.flow]。
+     *
+     * 联动：设置页（VoiceApiActivity）里改任何一项 → flow 发射 → 这里改 [settings]
+     *       → [buildTts] 是**每句话**现算的，所以下一句立刻用新音色/新语速/新情绪。
+     * 解耦：VoiceLoop 不认识设置页，只认识这条 flow。
+     */
+    private fun startSettingsWatcher() {
+        settingsJob?.cancel()
+        settingsJob = scope.launch {
+            VoiceSettingsStore.get(appCtx).flow.collect { nv ->
+                if (nv == settings) return@collect
+                val providerChanged = nv.doubaoKey != settings.doubaoKey ||
+                    nv.resourceId != settings.resourceId ||
+                    nv.voiceId != settings.voiceId ||
+                    nv.format != settings.format ||
+                    nv.sampleRate != settings.sampleRate ||
+                    nv.provider != settings.provider
+                settings = nv
+                com.dshpet.android.util.AppLog.log(
+                    "VOICE",
+                    "配置热更新：provider=" + nv.provider + " voice=" + nv.voiceId +
+                        " 情绪=" + nv.emotion + "/" + nv.emotionScale +
+                        " 语速=" + nv.speechRate + " 音量=" + nv.loudnessRate +
+                        " 换声源=" + providerChanged,
+                )
+            }
+        }
+    }
+
     fun start(s: VoiceSettings) {
         if (job?.isActive == true) return
         settings = s
@@ -154,6 +191,7 @@ class VoiceLoop(context: Context) {
         running = true
         current = this
         job = scope.launch { runLoop() }
+        startSettingsWatcher()
     }
 
     fun stop() {
@@ -162,6 +200,8 @@ class VoiceLoop(context: Context) {
         runCatching { activeTts?.cancel() }
         job?.cancel()
         job = null
+        settingsJob?.cancel()
+        settingsJob = null
         player.abort()          // 令牌失效 + 立刻静音，旧音频再也写不进来
         running = false
         _state.value = VoiceState.Idle

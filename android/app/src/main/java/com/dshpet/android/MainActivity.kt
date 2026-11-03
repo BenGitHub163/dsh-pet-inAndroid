@@ -1370,10 +1370,8 @@ private fun AiTab(ctx: android.content.Context, cfg: PetConfig, scope: kotlinx.c
         }
 
         Section("语音 API") {
-            val vStore = remember { com.dshpet.android.voice.core.VoiceSettingsStore(ctx) }
-            var vs by remember { mutableStateOf(vStore.load()) }
-            // 从二级页返回时刷新摘要
-            LaunchedEffect(resumeTick) { vs = vStore.load() }
+            // 订阅唯一数据源：语音 API 二级页里改任何一项，这里立刻刷新（不需要返回时再读一次）
+            val vs by com.dshpet.android.voice.core.VoiceSettingsStore.get(ctx).flow.collectAsState()
             SettingRow(
                 "语音服务商",
                 com.dshpet.android.voice.core.VoiceSettings.providerName(vs.provider) +

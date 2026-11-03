@@ -88,16 +88,8 @@ class VoiceApiActivity : ComponentActivity() {
         }
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        // 语音会话在跑时改过配置 → 停掉，下次开口按新配置重建
-        runCatching {
-            if (VoiceLoop.running) {
-                VoiceRuntime.stop()
-                com.dshpet.android.util.AppLog.u("语音", "语音配置已修改，语音会话已停止（下次开口用新配置）")
-            }
-        }
-    }
+    // 注：这里**不再**停语音会话——VoiceLoop 订阅了 VoiceSettingsStore.flow，
+    // 设置一改下一句就生效（热更新），不需要重启会话。
 }
 
 private enum class Page { LIST, DOUBAO, BREEZE, SYSTEM }
@@ -105,7 +97,7 @@ private enum class Page { LIST, DOUBAO, BREEZE, SYSTEM }
 @Composable
 private fun VoiceApiRoot() {
     val ctx = LocalContext.current
-    val store = remember { VoiceSettingsStore(ctx) }
+    val store = remember { VoiceSettingsStore.get(ctx) }
     var settings by remember { mutableStateOf(store.load()) }
     var page by remember { mutableStateOf(Page.LIST) }
 
