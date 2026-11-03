@@ -113,6 +113,12 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
+
+    // ---- 单元测试（只进 test 类路径，不进 APK；对应 TESTPLAN §2）----
+    // 工具解析/累加器写成纯类（不碰 Context / android.util.Log），才能在 JVM 上直接断言。
+    testImplementation("junit:junit:4.13.2")
+    // Android 自带的 org.json 在 JVM 单测里是抛 "Stub!" 的空壳，必须换真实实现
+    testImplementation("org.json:json:20240303")
 }
 
 // ============================================================================
