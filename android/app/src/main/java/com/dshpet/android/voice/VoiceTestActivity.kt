@@ -52,7 +52,8 @@ class VoiceTestActivity : Activity() {
     private lateinit var ridSpinner: Spinner
     private lateinit var bodySpinner: Spinner
     private lateinit var breezeKeyBox: EditText
-    private lateinit var breezeVoiceBox: EditText
+    private lateinit var breezeVoiceBox: Spinner
+    private var breezeVoices: List<Pair<String, String>> = emptyList()
     private lateinit var emotionSpinner: Spinner
     private lateinit var formatSpinner: Spinner
     private lateinit var rateSpinner: Spinner
@@ -128,20 +129,13 @@ class VoiceTestActivity : Activity() {
         }
         root.addView(breezeKeyBox)
 
-        root.addView(section("Breeze Blue · 音色 ID（voc_ 开头）"))
-        breezeVoiceBox = EditText(this).apply {
-            hint = "voc_xeh3w54cqvnp"
-            setText(
-                prefs.getString("breezeVoiceId", "").orEmpty().ifBlank {
-                    runCatching {
-                        com.dshpet.android.voice.core.VoiceSettingsStore
-                            .get(this@VoiceTestActivity).load().breezeVoiceId
-                    }.getOrDefault("")
-                }
-            )
-            inputType = InputType.TYPE_CLASS_TEXT
-        }
+        root.addView(section("Breeze Blue · 音色（按名字选）"))
+        breezeVoiceBox = Spinner(this)
         root.addView(breezeVoiceBox)
+        root.addView(Button(this).apply {
+            text = "刷新 Breeze 音色列表"
+            setOnClickListener { refreshBreezeVoices() }
+        })
 
         // ---------- 音色 ----------
         root.addView(section("音色（共 ${voices.size} 个，点右侧按钮筛选）"))
@@ -228,6 +222,7 @@ class VoiceTestActivity : Activity() {
         root.addView(status)
 
         setContentView(ScrollView(this).apply { addView(root) })
+        renderBreezeVoices()
 
         // 回填上次
         selected = voices.firstOrNull { it.id == prefs.getString("voiceId", "") }
@@ -334,12 +329,41 @@ class VoiceTestActivity : Activity() {
 
     // ---------------- 试听 ----------------
 
+    /** 用缓存填充 Breeze 音色下拉（只显示名字） */
+    private fun renderBreezeVoices() {
+        breezeVoices = com.dshpet.android.voice.BreezeVoices.cached(this)
+        breezeVoiceBox.adapter = ArrayAdapter(
+            this, android.R.layout.simple_spinner_item,
+            breezeVoices.map { it.second }.ifEmpty { listOf("（点下面按钮刷新音色列表）") },
+        ).apply { setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
+        val want = prefs.getString("breezeVoiceId", "").orEmpty().ifBlank {
+            runCatching {
+                com.dshpet.android.voice.core.VoiceSettingsStore.get(this).load().breezeVoiceId
+            }.getOrDefault("")
+        }
+        breezeVoiceBox.setSelection(breezeVoices.indexOfFirst { it.first == want }.coerceAtLeast(0))
+        breezeVoiceBox.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(p: AdapterView<*>?, v: android.view.View?, pos: Int, id: Long) = Unit
+            override fun onNothingSelected(p: AdapterView<*>?) = Unit
+        }
+    }
+
+    private fun refreshBreezeVoices() {
+        val key = breezeKeyBox.text.toString().trim()
+        if (key.isBlank()) return ui("先填 Breeze Key")
+        scope.launch {
+            runCatching { com.dshpet.android.voice.BreezeVoices.fetch(applicationContext, key) }
+                .onSuccess { runOnUiThread { renderBreezeVoices(); ui("已刷新 " + it.size + " 个音色") } }
+                .onFailure { runOnUiThread { ui("拉取失败：" + (it.message ?: "网络错误")) } }
+        }
+    }
+
     private fun speak(providerId: String) {
         val text = textBox.text.toString().ifBlank { "今天也要认真工作呀。" }
         // 两家服务商各自的配置（本页独立于「语音 API」页，专门用来试参数）
         val isBreeze = providerId == TtsEngines.ID_BREEZE
         val voice = if (isBreeze) null else (selected ?: return ui("先选一个音色"))
-        val breezeVoiceId = breezeVoiceBox.text.toString().trim()
+        val breezeVoiceId = breezeVoices.getOrNull(breezeVoiceBox.selectedItemPosition)?.first.orEmpty()
         if (isBreeze && breezeVoiceId.isBlank()) return ui("先填 Breeze 音色 ID（voc_ 开头）")
         val cfg = if (isBreeze) TtsConfig(
             providerId = TtsEngines.ID_BREEZE,
@@ -441,7 +465,11 @@ class VoiceTestActivity : Activity() {
             .putString("apiKey", keyBox.text.toString().trim())
             .putString("voiceId", selected?.id ?: "")
             .putString("breezeKey", runCatching { breezeKeyBox.text.toString().trim() }.getOrDefault(""))
-            .putString("breezeVoiceId", runCatching { breezeVoiceBox.text.toString().trim() }.getOrDefault(""))
+            .putString(
+                "breezeVoiceId",
+                runCatching { breezeVoices.getOrNull(breezeVoiceBox.selectedItemPosition)?.first.orEmpty() }
+                    .getOrDefault(""),
+            )
             .putString("resourceId", resourceIds[ridSpinner.selectedItemPosition])
             .putString("text", textBox.text.toString())
             .apply()

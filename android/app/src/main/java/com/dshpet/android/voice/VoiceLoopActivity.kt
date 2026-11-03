@@ -54,7 +54,8 @@ class VoiceLoopActivity : Activity() {
     private lateinit var usageHint: TextView
     private lateinit var voiceSpinner: Spinner
     private lateinit var providerSpinner: Spinner
-    private lateinit var breezeVoiceBox: android.widget.EditText
+    private lateinit var breezeVoiceSpinner: Spinner
+    private var breezeVoices: List<Pair<String, String>> = emptyList()
     private lateinit var cfgSummary: TextView
     private lateinit var startBtn: Button
     private lateinit var stopBtn: Button
@@ -157,7 +158,7 @@ class VoiceLoopActivity : Activity() {
                     }
                 )
                 // 控件还没建好时（onCreate 里的 setSelection 会立刻回调）先跳过
-                if (::voiceSpinner.isInitialized && ::breezeVoiceBox.isInitialized) renderVoicePicker()
+                if (::voiceSpinner.isInitialized && ::breezeVoiceSpinner.isInitialized) renderVoicePicker()
             }
             override fun onNothingSelected(p: AdapterView<*>?) {}
         }
@@ -166,13 +167,12 @@ class VoiceLoopActivity : Activity() {
         root.addView(label("音色"))
         voiceSpinner = Spinner(this)
         root.addView(voiceSpinner)
-        breezeVoiceBox = android.widget.EditText(this).apply {
-            hint = "Breeze 音色 ID（voc_ 开头）"
-            setText(settings.breezeVoiceId)
-            inputType = android.text.InputType.TYPE_CLASS_TEXT
-            visibility = android.view.View.GONE
-        }
-        root.addView(breezeVoiceBox)
+        breezeVoiceSpinner = Spinner(this).apply { visibility = android.view.View.GONE }
+        root.addView(breezeVoiceSpinner)
+        root.addView(Button(this).apply {
+            text = "刷新 Breeze 音色列表"
+            setOnClickListener { refreshBreezeVoices() }
+        })
 
         // 当前生效配置，一眼看清测的是谁
         cfgSummary = TextView(this).apply {
@@ -406,7 +406,10 @@ class VoiceLoopActivity : Activity() {
     private fun persistVoiceChoice() {
         // 按当前服务商落盘：豆包写 voiceId，Breeze 写 breezeVoiceId（store.save 会同步 PetConfig）
         settings = if (settings.provider == VoiceSettings.PROVIDER_BREEZE) {
-            settings.copy(breezeVoiceId = breezeVoiceBox.text.toString().trim())
+            settings.copy(
+                breezeVoiceId = breezeVoices.getOrNull(breezeVoiceSpinner.selectedItemPosition)?.first
+                    ?: settings.breezeVoiceId,
+            )
         } else {
             settings.copy(voiceId = settings.voiceId)
         }
@@ -420,15 +423,30 @@ class VoiceLoopActivity : Activity() {
         when (settings.provider) {
             VoiceSettings.PROVIDER_BREEZE -> {
                 voiceSpinner.visibility = android.view.View.GONE
-                breezeVoiceBox.visibility = android.view.View.VISIBLE
+                breezeVoices = com.dshpet.android.voice.BreezeVoices.cached(this)
+                breezeVoiceSpinner.adapter = ArrayAdapter(
+                    this, android.R.layout.simple_spinner_item,
+                    breezeVoices.map { it.second }.ifEmpty { listOf("（点下面按钮刷新音色列表）") },
+                ).apply { setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
+                breezeVoiceSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                    override fun onItemSelected(p: AdapterView<*>?, v: android.view.View?, pos: Int, id: Long) {
+                        breezeVoices.getOrNull(pos)?.let { settings = settings.copy(breezeVoiceId = it.first) }
+                        updateCfgSummary()
+                    }
+                    override fun onNothingSelected(p: AdapterView<*>?) {}
+                }
+                breezeVoiceSpinner.setSelection(
+                    breezeVoices.indexOfFirst { it.first == settings.breezeVoiceId }.coerceAtLeast(0)
+                )
+                breezeVoiceSpinner.visibility = android.view.View.VISIBLE
             }
             VoiceSettings.PROVIDER_SYSTEM -> {
                 voiceSpinner.visibility = android.view.View.GONE
-                breezeVoiceBox.visibility = android.view.View.GONE
+                breezeVoiceSpinner.visibility = android.view.View.GONE
             }
             else -> {
                 voiceSpinner.visibility = android.view.View.VISIBLE
-                breezeVoiceBox.visibility = android.view.View.GONE
+                breezeVoiceSpinner.visibility = android.view.View.GONE
                 voiceSpinner.adapter = ArrayAdapter(
                     this, android.R.layout.simple_spinner_item,
                     doubao.map { it.second + " · " + it.third },
@@ -448,9 +466,28 @@ class VoiceLoopActivity : Activity() {
         updateCfgSummary()
     }
 
+    /** 拉 Breeze 音色列表（UI 只显示名字，ID 只存在设置里） */
+    private fun refreshBreezeVoices() {
+        val key = settings.breezeKey
+        if (key.isBlank()) {
+            android.widget.Toast.makeText(this, "先到「语音 API」里填 Breeze Key", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+        uiScope.launch {
+            runCatching { com.dshpet.android.voice.BreezeVoices.fetch(applicationContext, key) }
+                .onSuccess { renderVoicePicker() }
+                .onFailure {
+                    android.widget.Toast.makeText(
+                        this@VoiceLoopActivity, "拉取失败：" + (it.message ?: "网络错误"),
+                        android.widget.Toast.LENGTH_SHORT,
+                    ).show()
+                }
+        }
+    }
+
     private fun updateCfgSummary() {
         val voice = if (settings.provider == VoiceSettings.PROVIDER_BREEZE) {
-            breezeVoiceBox.text.toString().ifBlank { "未填" }
+            com.dshpet.android.voice.BreezeVoices.nameOf(this, settings.breezeVoiceId)
         } else {
             com.dshpet.android.voice.DoubaoVoices.nameOf(this, settings.voiceId)
         }

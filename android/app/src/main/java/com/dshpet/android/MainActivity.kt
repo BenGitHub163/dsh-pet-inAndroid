@@ -1375,7 +1375,7 @@ private fun AiTab(ctx: android.content.Context, cfg: PetConfig, scope: kotlinx.c
             SettingRow(
                 "语音服务商",
                 com.dshpet.android.voice.core.VoiceSettings.providerName(vs.provider) +
-                    " ｜ 音色 " + (if (vs.provider == com.dshpet.android.voice.core.VoiceSettings.PROVIDER_BREEZE) vs.breezeVoiceId.ifBlank { "未选" } else vs.voiceId) +
+                    " ｜ 音色 " + (if (vs.provider == com.dshpet.android.voice.core.VoiceSettings.PROVIDER_BREEZE) com.dshpet.android.voice.BreezeVoices.nameOf(ctx, vs.breezeVoiceId) else com.dshpet.android.voice.DoubaoVoices.nameOf(ctx, vs.voiceId)) +
                     " ｜ " + (if (vs.emotion.isBlank()) "无情绪" else "情绪 " + vs.emotion + "/" + vs.emotionScale) +
                     " ｜ 语速 " + vs.speechRate + " · 音量 " + vs.loudnessRate,
                 trailing = {

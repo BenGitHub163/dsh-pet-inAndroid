@@ -255,7 +255,7 @@ private fun DoubaoPage(
                     RadioButton(selected = sel, onClick = { onSave(s.copy(voiceId = id)) })
                     Column(Modifier.weight(1f)) {
                         Text(name, fontSize = 13.sp, fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Normal)
-                        Text("$id · $tag", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(tag, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -323,7 +323,13 @@ private fun BreezePage(
     onSave: (VoiceSettings) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    var list by remember { mutableStateOf<List<Triple<String, String, String>>>(emptyList()) }
+    val ctx = LocalContext.current
+    // 先用缓存（离线也能看到名字），点「刷新」再去服务端拉
+    var list by remember {
+        mutableStateOf(
+            BreezeVoices.cached(ctx).map { Triple(it.first, it.second, "") },
+        )
+    }
     var loading by remember { mutableStateOf(false) }
     var msg by remember { mutableStateOf("") }
 
@@ -336,10 +342,12 @@ private fun BreezePage(
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.height(8.dp))
+        // 用户只认名字：这里只展示选中的音色名，ID 藏在设置里（不暴露）
         OutlinedTextField(
-            value = s.breezeVoiceId,
-            onValueChange = { onSave(s.copy(breezeVoiceId = it)) },
-            label = { Text("音色 ID（voc_ 开头，可从下面列表选）") },
+            value = if (s.breezeVoiceId.isBlank()) "未选音色" else BreezeVoices.nameOf(ctx, s.breezeVoiceId),
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("当前音色") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -350,14 +358,19 @@ private fun BreezePage(
                     if (s.breezeKey.isBlank()) { msg = "先填 Key"; return@OutlinedButton }
                     loading = true; msg = "拉取中…"
                     scope.launch {
-                        val r = runCatching { BreezePreview.listVoices(s.breezeKey) }
+                        val r = runCatching {
+                            BreezeVoices.fetch(ctx, s.breezeKey).map { Triple(it.first, it.second, "") }
+                        }
                         loading = false
-                        r.onSuccess { list = it; msg = "共 ${it.size} 个音色" }
-                            .onFailure { msg = "失败：${it.message}" }
+                        r.onSuccess { got ->
+                            list = got
+                            msg = "共 " + got.size + " 个音色"
+                            if (s.breezeVoiceId.isBlank()) got.firstOrNull()?.let { onSave(s.copy(breezeVoiceId = it.first)) }
+                        }.onFailure { e -> msg = "失败：" + (e.message ?: "网络错误") }
                     }
                 },
                 enabled = !loading,
-            ) { Text(if (loading) "拉取中…" else "拉取音色列表") }
+            ) { Text(if (loading) "拉取中…" else "刷新音色列表") }
             Spacer(Modifier.size(10.dp))
             if (msg.isNotBlank()) Text(msg, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -375,7 +388,7 @@ private fun BreezePage(
                         RadioButton(selected = sel, onClick = { onSave(s.copy(breezeVoiceId = v.first)) })
                         Column(Modifier.weight(1f)) {
                             Text(v.second, fontSize = 13.sp)
-                            Text("${v.first} · ${v.third}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (v.third.isNotBlank()) Text(v.third, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         TextButton(onClick = {
                             if (s.breezeKey.isBlank()) { msg = "先填 Key"; return@TextButton }
