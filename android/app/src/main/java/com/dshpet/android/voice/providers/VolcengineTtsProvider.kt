@@ -211,10 +211,6 @@ class VolcengineTtsProvider(
         private val JSON = "application/json".toMediaType()
         private val BASE64_FIELDS = arrayOf("data", "audio", "audio_data", "audio_b64", "chunk")
 
-        fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
-            .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(0, TimeUnit.SECONDS)
-            .writeTimeout(10, TimeUnit.SECONDS)
-            .build()
+fun defaultClient(): OkHttpClient = com.dshpet.android.api.ApiClient.stream()
     }
 }

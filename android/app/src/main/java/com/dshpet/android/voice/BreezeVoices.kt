@@ -3,11 +3,9 @@ package com.dshpet.android.voice
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
-import java.util.concurrent.TimeUnit
 
 /**
  * Breeze Blue 音色**名字缓存**。
@@ -22,10 +20,7 @@ object BreezeVoices {
     private const val PREF = "breeze_voices"
     private const val KEY_LIST = "list_json"
 
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .build()
+private val client = com.dshpet.android.api.ApiClient.read(30)
 
     /** 缓存里的音色（id 在前，名字在后） */
     fun cached(ctx: Context): List<Pair<String, String>> {

@@ -530,29 +530,7 @@ private object DoubaoPreview {
 /** Breeze 试听 / 列表：直接用 OkHttp 打文档里的接口 */
 private object BreezePreview {
 
-    private val client = okhttp3.OkHttpClient.Builder()
-        .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-        .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
-        .build()
-
-    /** `GET /v1/voices?language_code=zh` → (voice_id, name, language) */
-    suspend fun listVoices(key: String): List<Triple<String, String, String>> = withContext(Dispatchers.IO) {
-        val req = okhttp3.Request.Builder()
-            .url("https://api.breeze.blue/v1/voices?language_code=zh&page_size=50")
-            .addHeader("xi-api-key", key)
-            .get().build()
-        client.newCall(req).execute().use { resp ->
-            val body = resp.body?.string().orEmpty()
-            if (!resp.isSuccessful) error("HTTP ${resp.code}: ${body.take(120)}")
-            val arr: org.json.JSONArray = org.json.JSONObject(body).optJSONArray("voices") ?: org.json.JSONArray()
-            (0 until arr.length()).mapNotNull<Int, Triple<String, String, String>> { i ->
-                val o = arr.optJSONObject(i) ?: return@mapNotNull null
-                val id = o.optString("voice_id")
-                if (id.isBlank()) null
-                else Triple(id, o.optString("name").ifBlank { id }, o.optString("language_code"))
-            }
-        }
-    }
+private val client = com.dshpet.android.api.ApiClient.read(60)
 
     /** `POST /v1/text-to-speech/{id}/stream?output_format=pcm` → AudioTrack（24k/mono/s16le） */
     suspend fun play(key: String, voiceId: String) = withContext(Dispatchers.IO) {

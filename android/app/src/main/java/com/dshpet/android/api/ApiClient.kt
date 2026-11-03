@@ -51,6 +51,46 @@ object ApiClient {
     fun stream(): OkHttpClient = http
 
     /**
+     * 带自定义超时 / 可跳过证书校验的客户端。
+     *
+     * 自签名网关（`verify_ssl=false`）只在**连接层**放宽，其它行为与 [http] 一致，
+     * 连接池仍然共享。这段 trust-all 代码原来在 SseClient / Balance / testConnection
+     * 里各抄了一份，现在只有这里一处。
+     */
+    fun config(
+        connectSec: Long = 10,
+        readSec: Long = 20,
+        writeSec: Long = 15,
+        verifySsl: Boolean = true,
+    ): OkHttpClient {
+        val b = http.newBuilder()
+            .connectTimeout(connectSec, TimeUnit.SECONDS)
+            .writeTimeout(writeSec, TimeUnit.SECONDS)
+            .readTimeout(readSec, TimeUnit.SECONDS)
+        if (!verifySsl) {
+            val factory = insecureFactory ?: buildInsecureFactory().also { insecureFactory = it }
+            b.sslSocketFactory(factory.first, factory.second)
+            b.hostnameVerifier { _, _ -> true }
+        }
+        return b.build()
+    }
+
+    @Volatile
+    private var insecureFactory: Pair<javax.net.ssl.SSLSocketFactory, javax.net.ssl.X509TrustManager>? = null
+
+    /** 跳过证书校验（本地网关 / 自签名）。**只给用户显式关闭校验时用。** */
+    private fun buildInsecureFactory(): Pair<javax.net.ssl.SSLSocketFactory, javax.net.ssl.X509TrustManager> {
+        val tm = object : javax.net.ssl.X509TrustManager {
+            override fun checkClientTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {}
+            override fun checkServerTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {}
+            override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> = emptyArray()
+        }
+        val ctx = javax.net.ssl.SSLContext.getInstance("TLS")
+        ctx.init(null, arrayOf(tm), java.security.SecureRandom())
+        return ctx.socketFactory to tm
+    }
+
+    /**
      * 只记 method / host+path / 状态码 / 耗时。
      * **绝不打印 Authorization 或 query 里的 key** —— 这份日志会进用户可见的日志页。
      */

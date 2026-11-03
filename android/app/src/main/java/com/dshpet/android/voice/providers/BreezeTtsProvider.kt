@@ -14,7 +14,6 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
-import java.util.concurrent.TimeUnit
 
 /**
  * Breeze Blue TTS（https://docs.breezeblue.ai）。
@@ -106,11 +105,6 @@ class BreezeTtsProvider(private val cfg: TtsConfig) : TtsProvider {
     }
 
     private companion object {
-        val client: OkHttpClient by lazy {
-            OkHttpClient.Builder()
-                .connectTimeout(15, TimeUnit.SECONDS)
-                .readTimeout(60, TimeUnit.SECONDS)
-                .build()
-        }
+val client: OkHttpClient by lazy { com.dshpet.android.api.ApiClient.read(60) }
     }
 }

@@ -157,27 +157,13 @@ object SseClient {
         }
     }
 
-    private fun buildClient(cfg: ChatCfg): OkHttpClient {
-        val builder = OkHttpClient.Builder()
-            .connectTimeout(cfg.timeoutSec.toLong(), TimeUnit.SECONDS)
-            .readTimeout(0, TimeUnit.MILLISECONDS) // 流式：不设读超时，由连接层控制
-            .writeTimeout(cfg.timeoutSec.toLong(), TimeUnit.SECONDS)
-        if (!cfg.verifySsl) {
-            val trustAll = arrayOfNulls<java.security.cert.X509Certificate>(0)
-            val tm = object : javax.net.ssl.X509TrustManager {
-                override fun checkClientTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {}
-                override fun checkServerTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {}
-                @Suppress("UNCHECKED_CAST")
-                override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> =
-                    trustAll as Array<java.security.cert.X509Certificate>
-            }
-            val sslCtx = javax.net.ssl.SSLContext.getInstance("TLS")
-            sslCtx.init(null, arrayOf(tm), java.security.SecureRandom())
-            builder.sslSocketFactory(sslCtx.socketFactory, tm)
-            builder.hostnameVerifier { _, _ -> true }
-        }
-        return builder.build()
-    }
+    private fun buildClient(cfg: ChatCfg): OkHttpClient =
+        com.dshpet.android.api.ApiClient.config(
+            connectSec = cfg.timeoutSec.toLong(),
+            readSec = 0, // 流式：不设读超时，由连接层控制
+            writeSec = cfg.timeoutSec.toLong(),
+            verifySsl = cfg.verifySsl,
+        )
 
     private fun safeErrorDetail(raw: String): String {
         if (raw.isBlank()) return "无响应内容"
@@ -255,26 +241,12 @@ fun fetchModels(
     if (apiKey.isBlank()) return Result.failure(IllegalStateException("未配置 API Key"))
     val url = baseUrl.trim().trimEnd('/') + "/models"
     return try {
-        val client = okhttp3.OkHttpClient.Builder()
-            .connectTimeout(timeoutSec.toLong(), java.util.concurrent.TimeUnit.SECONDS)
-            .readTimeout(timeoutSec.toLong(), java.util.concurrent.TimeUnit.SECONDS)
-            .apply {
-                if (!verifySsl) {
-                    val trustAll = arrayOfNulls<java.security.cert.X509Certificate>(0)
-                    val tm = object : javax.net.ssl.X509TrustManager {
-                        override fun checkClientTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {}
-                        override fun checkServerTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {}
-                        @Suppress("UNCHECKED_CAST")
-                        override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> =
-                            trustAll as Array<java.security.cert.X509Certificate>
-                    }
-                    val sslCtx = javax.net.ssl.SSLContext.getInstance("TLS")
-                    sslCtx.init(null, arrayOf(tm), java.security.SecureRandom())
-                    sslSocketFactory(sslCtx.socketFactory, tm)
-                    hostnameVerifier { _, _ -> true }
-                }
-            }
-            .build()
+        val client = com.dshpet.android.api.ApiClient.config(
+            connectSec = timeoutSec.toLong(),
+            readSec = timeoutSec.toLong(),
+            writeSec = timeoutSec.toLong(),
+            verifySsl = verifySsl,
+        )
         val req = okhttp3.Request.Builder()
             .url(url)
             .header("Authorization", "Bearer $apiKey")

@@ -1,8 +1,6 @@
 package com.dshpet.android.pet
 
-import okhttp3.OkHttpClient
 import okhttp3.Request
-import java.util.concurrent.TimeUnit
 
 /**
  * DeepSeek 余额查询（GET /user/balance），1:1 移植 balance.py。
@@ -78,27 +76,12 @@ object Balance {
         if (apiKey.isBlank()) return Result.failure(IllegalStateException("未配置 API Key"))
         val endpoint = baseUrl.trim().trimEnd('/') + "/user/balance"
         return try {
-            val client = OkHttpClient.Builder()
-                .connectTimeout(timeoutSec.toLong(), TimeUnit.SECONDS)
-                .readTimeout(timeoutSec.toLong(), TimeUnit.SECONDS)
-                .apply {
-                    if (!verifySsl) {
-                        // 跳过证书校验（本地网关/自签名），与桌面端 verify_ssl=false 一致
-                        val trustAll = arrayOfNulls<java.security.cert.X509Certificate>(0)
-                        val tm = object : javax.net.ssl.X509TrustManager {
-                            override fun checkClientTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {}
-                            override fun checkServerTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {}
-                            @Suppress("UNCHECKED_CAST")
-                            override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> =
-                                trustAll as Array<java.security.cert.X509Certificate>
-                        }
-                        val sslCtx = javax.net.ssl.SSLContext.getInstance("TLS")
-                        sslCtx.init(null, arrayOf(tm), java.security.SecureRandom())
-                        sslSocketFactory(sslCtx.socketFactory, tm)
-                        hostnameVerifier { _, _ -> true }
-                    }
-                }
-                .build()
+val client = com.dshpet.android.api.ApiClient.config(
+            connectSec = timeoutSec.toLong(),
+            readSec = timeoutSec.toLong(),
+            writeSec = timeoutSec.toLong(),
+            verifySsl = verifySsl,
+        )
             val req = Request.Builder()
                 .url(endpoint)
                 .header("Authorization", "Bearer $apiKey")

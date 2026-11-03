@@ -101,10 +101,6 @@ class OpenAiCompatTtsProvider(
     companion object {
         private val JSON = "application/json".toMediaType()
 
-        fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
-            .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(0, TimeUnit.SECONDS)
-            .writeTimeout(10, TimeUnit.SECONDS)
-            .build()
+fun defaultClient(): OkHttpClient = com.dshpet.android.api.ApiClient.stream()
     }
 }

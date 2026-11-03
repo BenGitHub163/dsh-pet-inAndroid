@@ -11,7 +11,6 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
-import java.util.concurrent.TimeUnit
 
 /**
  * 视觉观察（**Adapter**）：把一帧照片变成一句"客观观察"，再交给桌宠做反应。
@@ -25,10 +24,7 @@ import java.util.concurrent.TimeUnit
  *  - 图片走 data URI 直接内联，不落盘、不上传到第三方存储。
  */
 class VisionClient(
-    private val client: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .build(),
+private val client: OkHttpClient = com.dshpet.android.api.ApiClient.read(60),
 ) {
 
     suspend fun observe(cfg: SseClient.ChatCfg, jpeg: ByteArray): String? =
