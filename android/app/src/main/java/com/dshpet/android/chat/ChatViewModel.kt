@@ -3,6 +3,7 @@ package com.dshpet.android.chat
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.dshpet.android.api.ChatStream
 import com.dshpet.android.data.PetConfig
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -104,7 +105,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             _streamText.value = ""
 
             // 与语音对话共用同一套连接参数（唯一来源：ChatApi）
-            val history = session.messages.takeLast(20).map { SseClient.Msg(it.role, it.content) }
+            val history = session.messages.takeLast(20).map { ChatStream.Msg(it.role, it.content) }
             val maxTokens = config.chatMaxTokens().coerceAtMost(512)
             streamJob = viewModelScope.launch {
                 try {

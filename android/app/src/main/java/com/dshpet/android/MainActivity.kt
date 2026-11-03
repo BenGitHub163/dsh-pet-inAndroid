@@ -1298,7 +1298,7 @@ private fun AiTab(ctx: android.content.Context, cfg: PetConfig, scope: kotlinx.c
                         modelSyncMsg = null
                         scope.launch {
                             val r = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                com.dshpet.android.chat.fetchModels(baseUrl, apiKey, verifySsl)
+                                com.dshpet.android.api.fetchModels(baseUrl, apiKey, verifySsl)
                             }
                             r.fold(
                                 onSuccess = { list ->

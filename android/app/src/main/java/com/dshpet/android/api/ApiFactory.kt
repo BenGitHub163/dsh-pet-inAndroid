@@ -1,7 +1,7 @@
 package com.dshpet.android.api
 
 import android.content.Context
-import com.dshpet.android.chat.SseClient
+import com.dshpet.android.api.ChatStream
 import com.dshpet.android.data.PetConfig
 import com.dshpet.android.voice.TtsConfig
 import com.dshpet.android.voice.VoiceProfile
@@ -14,7 +14,7 @@ import com.dshpet.android.voice.providers.VolcengineTtsProvider
  * | | [ApiFactory] | [ApiTargets] |
  * |---|---|---|
  * | 谁用 | 对话 / 语音 / 自言自语等**业务代码** | 设置页「工具」面板的**界面** |
- * | 产出 | [SseClient.ChatCfg] 这类**拿来就能用**的配置对象 | [ApiTarget] 这类**可渲染的行**（名字 / Key 掩码 / 测试动作） |
+ * | 产出 | [ChatStream.ChatCfg] 这类**拿来就能用**的配置对象 | [ApiTarget] 这类**可渲染的行**（名字 / Key 掩码 / 测试动作） |
  * | 依赖 | 只读配置，纯函数、非挂起 | 还要真的发请求（测试连接、查余额），是 `suspend` |
  *
  * 为什么**不**合成一个类：把"网络测试"和"业务构造"塞进同一个对象后，
@@ -100,7 +100,7 @@ object ApiTargets {
             name = "DeepSeek 对话",
             keyHint = mask(dsKey),
             test = {
-                val chat = SseClient.ChatCfg(
+                val chat = ChatStream.ChatCfg(
                     baseUrl = cfg.chatBaseUrl(),
                     chatPath = cfg.chatPath(),
                     model = cfg.chatModel(),
@@ -112,7 +112,7 @@ object ApiTargets {
                 )
                 runCatching {
                     kotlinx.coroutines.suspendCancellableCoroutine<String> { cont ->
-                        SseClient.testConnection(chat) { r ->
+                        ChatStream.testConnection(chat) { r ->
                             if (cont.isActive) {
                                 r.fold(
                                     { ok -> cont.resumeWith(Result.success(ok)) },

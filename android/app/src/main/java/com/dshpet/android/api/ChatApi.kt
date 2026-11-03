@@ -1,7 +1,7 @@
 package com.dshpet.android.api
 
 import android.content.Context
-import com.dshpet.android.chat.SseClient
+import com.dshpet.android.api.ChatStream
 import com.dshpet.android.data.KeyFactory
 import com.dshpet.android.data.PetConfig
 import kotlinx.coroutines.channels.awaitClose
@@ -27,9 +27,9 @@ class ChatApi(private val ctx: Context) {
     }
 
     /** 同包内的其它接口（视觉/记忆等）复用同一套端点与鉴权 */
-    internal fun cfg(maxTokens: Int, temperature: Double = -1.0): SseClient.ChatCfg {
+    internal fun cfg(maxTokens: Int, temperature: Double = -1.0): ChatStream.ChatCfg {
         val ready = PetConfig.snapReady
-        return SseClient.ChatCfg(
+        return ChatStream.ChatCfg(
             baseUrl = (if (ready) PetConfig.snapBaseUrl else "").ifBlank { DEFAULT_BASE_URL },
             chatPath = (if (ready) PetConfig.snapChatPath else "").ifBlank { DEFAULT_PATH },
             model = (if (ready) PetConfig.snapModel else "").ifBlank { DEFAULT_MODEL },
@@ -42,8 +42,8 @@ class ChatApi(private val ctx: Context) {
     }
 
     /** 流式对话：取消 Flow 即取消底层请求 */
-    fun stream(messages: List<SseClient.Msg>, maxTokens: Int = 2048): Flow<String> = callbackFlow {
-        val job = SseClient.stream(
+    fun stream(messages: List<ChatStream.Msg>, maxTokens: Int = 2048): Flow<String> = callbackFlow {
+        val job = ChatStream.stream(
             cfg = cfg(maxTokens),
             messages = messages,
             onDelta = { delta -> trySend(delta) },
@@ -54,12 +54,12 @@ class ChatApi(private val ctx: Context) {
     }
 
     /** 一次性拿完整回复（记忆整理 / 自说自话 / 看屏） */
-    suspend fun complete(messages: List<SseClient.Msg>, maxTokens: Int = 512): String =
+    suspend fun complete(messages: List<ChatStream.Msg>, maxTokens: Int = 512): String =
         stream(messages, maxTokens).fold("") { acc, d -> acc + d }
 
     /** 连通性测试（设置页「测试」） */
     suspend fun test(timeoutSec: Int = 15): Result<String> = suspendCancellableCoroutine { cont ->
-        SseClient.testConnection(cfg(64).copy(timeoutSec = timeoutSec)) { r ->
+        ChatStream.testConnection(cfg(64).copy(timeoutSec = timeoutSec)) { r ->
             if (cont.isActive) cont.resume(r)
         }
     }

@@ -2,8 +2,7 @@ package com.dshpet.android.voice.persona
 
 import android.content.Context
 import android.util.Log
-import com.dshpet.android.chat.SseClient
-import com.dshpet.android.voice.chat.ChatClient
+import com.dshpet.android.api.ChatStream
 import org.json.JSONObject
 import kotlin.math.abs
 

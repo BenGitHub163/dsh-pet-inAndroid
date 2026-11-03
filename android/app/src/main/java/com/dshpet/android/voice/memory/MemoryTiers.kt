@@ -2,8 +2,7 @@ package com.dshpet.android.voice.memory
 
 import android.content.Context
 import android.util.Log
-import com.dshpet.android.chat.SseClient
-import com.dshpet.android.voice.chat.ChatClient
+import com.dshpet.android.api.ChatStream
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
 import org.json.JSONArray
@@ -197,13 +196,13 @@ class MemoryConsolidator(
 ) {
 
     /** 把最近几轮对话压成一个话题片段 */
-    suspend fun summarize(turns: List<SseClient.Msg>): MemorySegment? {
+    suspend fun summarize(turns: List<ChatStream.Msg>): MemorySegment? {
         if (turns.count { it.role == "user" } < 2) return null
         val dialog = turns.takeLast(10).joinToString("\n") { "${it.role}：${it.content.take(200)}" }
         val text = collect(
             listOf(
-                SseClient.Msg("system", SUMMARIZE_PROMPT),
-                SseClient.Msg("user", dialog),
+                ChatStream.Msg("system", SUMMARIZE_PROMPT),
+                ChatStream.Msg("user", dialog),
             )
         ) ?: return null
         val json = extractJson(text, '{', '}') ?: return null
@@ -231,8 +230,8 @@ class MemoryConsolidator(
     suspend fun promote(segment: MemorySegment): List<MemoryItem> {
         val text = collect(
             listOf(
-                SseClient.Msg("system", PROMOTE_PROMPT),
-                SseClient.Msg("user", "话题：${segment.title}\n摘要：${segment.summary}"),
+                ChatStream.Msg("system", PROMOTE_PROMPT),
+                ChatStream.Msg("user", "话题：${segment.title}\n摘要：${segment.summary}"),
             )
         ) ?: return emptyList()
         val arr = extractJson(text, '[', ']') ?: return emptyList()
@@ -258,7 +257,7 @@ class MemoryConsolidator(
         return out
     }
 
-    private suspend fun collect(messages: List<SseClient.Msg>): String? {
+    private suspend fun collect(messages: List<ChatStream.Msg>): String? {
         val sb = StringBuilder()
         return try {
             chatApi.stream(messages).collect { sb.append(it) }

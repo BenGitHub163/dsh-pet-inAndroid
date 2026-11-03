@@ -2,8 +2,7 @@ package com.dshpet.android.voice.memory
 
 import android.content.Context
 import android.util.Log
-import com.dshpet.android.chat.SseClient
-import com.dshpet.android.voice.chat.ChatClient
+import com.dshpet.android.api.ChatStream
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -41,8 +40,8 @@ class MemoryExtractor(
     suspend fun extract(userText: String, answer: String, ctx: MemoryContext = MemoryContext()): List<MemoryItem> {
         if (userText.length < 4) return emptyList()
         val messages = listOf(
-            SseClient.Msg("system", SYSTEM),
-            SseClient.Msg("user", "用户：$userText\n助手：${answer.take(300)}"),
+            ChatStream.Msg("system", SYSTEM),
+            ChatStream.Msg("user", "用户：$userText\n助手：${answer.take(300)}"),
         )
         val sb = StringBuilder()
         runCatching {
@@ -200,7 +199,7 @@ class MemoryManager(
     }
 
     /** 短期 → 中期：把最近几轮压成话题片段；heat 够了再提炼进长期 */
-    fun consolidateAsync(turns: List<SseClient.Msg>) {
+    fun consolidateAsync(turns: List<ChatStream.Msg>) {
         if (!consolidating.compareAndSet(false, true)) return
         scope.launch {
             try {

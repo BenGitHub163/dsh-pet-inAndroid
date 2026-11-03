@@ -2,7 +2,7 @@ package com.dshpet.android.voice.core
 
 import android.content.Context
 import android.util.Log
-import com.dshpet.android.chat.SseClient
+import com.dshpet.android.api.ChatStream
 import com.dshpet.android.voice.SentenceSplitter
 import com.dshpet.android.voice.TtsConfig
 import com.dshpet.android.voice.TtsEngines
@@ -10,7 +10,6 @@ import com.dshpet.android.voice.TtsProvider
 import com.dshpet.android.voice.VoiceProfile
 import com.dshpet.android.voice.asr.AsrProvider
 import com.dshpet.android.voice.asr.SystemAsrProvider
-import com.dshpet.android.voice.chat.ChatClient
 import com.dshpet.android.voice.memory.MemoryManager
 import com.dshpet.android.voice.providers.SystemTtsProvider
 import com.dshpet.android.voice.providers.VolcengineTtsProvider
@@ -41,7 +40,7 @@ import kotlinx.coroutines.withContext
  *
  * 内部把四件事解耦，每一件都能单独替换：
  *   1. 听：`AsrProvider`（Strategies）
- *   2. 想：`ChatClient`（适配 SseClient → Flow）
+ *   2. 想：`ChatApi`（`api/ChatStream` 的 Flow 封装）
  *   3. 说：`TtsChain`（责任链：豆包 → 系统 TTS）
  *   4. 放：`SpeechPlayer` + `SpeechQueue`（复用 AudioTrack、逐句流水线）
  */
@@ -63,7 +62,6 @@ class VoiceLoop(context: Context) {
     val capabilities: VoiceCapabilities by lazy { VoiceCapabilities.detect(appCtx) }
 
     private val asr: AsrProvider by lazy { SystemAsrProvider(appCtx, capabilities) }
-    private val chat = ChatClient()
     private val player = SpeechPlayer(appCtx)
 
     /** 预取式播放流水线：合成下一句的同时播当前句 */
@@ -134,7 +132,7 @@ class VoiceLoop(context: Context) {
     @Volatile
     private var activeTts: TtsProvider? = null
 
-    private val history = ArrayDeque<SseClient.Msg>()
+    private val history = ArrayDeque<ChatStream.Msg>()
 
     /** 用户最后一次「真的说话」的时刻（用于沉默判定） */
     private var lastSpeechAt = 0L
@@ -349,15 +347,15 @@ class VoiceLoop(context: Context) {
         val tpl = NudgePolicy.templateFor(nudgesSinceSpeech)
         _events.tryEmit(VoiceEvent.Info("主动开口（${tpl.label}）"))
         val messages = buildList {
-            add(SseClient.Msg("system", VoiceSkills.forNudge(tpl.system)))
+            add(ChatStream.Msg("system", VoiceSkills.forNudge(tpl.system)))
             addAll(history.takeLast(6))
-            if (history.isEmpty()) add(SseClient.Msg("user", "（用户还没开口）"))
+            if (history.isEmpty()) add(ChatStream.Msg("user", "（用户还没开口）"))
         }
         val text = collectOneShot(messages, maxTokens = 64)
         if (text.isBlank()) return
 
         Log.i(TAG, "nudge[${tpl.id}]: $text")
-        history.addLast(SseClient.Msg("assistant", text))
+        history.addLast(ChatStream.Msg("assistant", text))
         _events.tryEmit(VoiceEvent.AssistantSaid(text))
         speakText(tts, voice, text, userText = "（沉默）")
         // 被冷落了：会有点小情绪（会随时间衰减，不会记仇）
@@ -373,7 +371,7 @@ class VoiceLoop(context: Context) {
     }
 
     /** 一次性拿完整回复（非流式收集），用于主动开口这种短句 */
-    private suspend fun collectOneShot(messages: List<SseClient.Msg>, maxTokens: Int): String {
+    private suspend fun collectOneShot(messages: List<ChatStream.Msg>, maxTokens: Int): String {
         val sb = StringBuilder()
         runCatching {
             chatApi().stream(messages, maxTokens).collect { sb.append(it) }
@@ -409,7 +407,7 @@ class VoiceLoop(context: Context) {
     }
 
     private suspend fun oneTurn(userText: String, tts: TtsProvider, mock: Boolean = false, from: String = "voice") {
-        history.addLast(SseClient.Msg("user", userText))
+        history.addLast(ChatStream.Msg("user", userText))
         while (history.size > settings.historyLimit) history.removeFirst()
         _events.tryEmit(VoiceEvent.UserSaid(userText))
         _state.value = VoiceState.Thinking(userText)
@@ -463,7 +461,7 @@ class VoiceLoop(context: Context) {
             }
         }
         val messages = buildList {
-            add(SseClient.Msg("system", systemText))
+            add(ChatStream.Msg("system", systemText))
             addAll(history)
         }
         lastReply = ""
@@ -500,7 +498,7 @@ class VoiceLoop(context: Context) {
 
         if (answer.isNotBlank()) {
             _events.tryEmit(VoiceEvent.AssistantSaid(answer))
-            history.addLast(SseClient.Msg("assistant", answer))
+            history.addLast(ChatStream.Msg("assistant", answer))
             while (history.size > settings.historyLimit) history.removeFirst()
             // 异步抽取记忆（带上"当时在哪、在用什么应用"，供后续整理与回忆）
             val facts = runCatching { deviceContext.facts() }.getOrNull()
