@@ -29,6 +29,8 @@ class PetApp : Application() {
     }
 
     override fun onCreate() {
+        // 提示词仓库：assets/prompts/*.txt（可在 files/prompts/ 覆盖，不用重新编译）
+        runCatching { com.dshpet.android.prompt.PromptStore.init(this) }
         // 后台预热配置快照：此后所有请求读内存，不再阻塞主线程
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
             runCatching { com.dshpet.android.data.PetConfig.refreshSnapshot(this@PetApp) }

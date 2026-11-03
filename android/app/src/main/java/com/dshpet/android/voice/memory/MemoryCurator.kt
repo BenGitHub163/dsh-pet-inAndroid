@@ -186,26 +186,10 @@ class MemoryCurator(
         private const val REVIEW_ITEMS = 40
         private const val MAX_SEND = 60
 
-        private val PROMPT = """
-            你是「记忆整理员」。下面是桌宠记住的用户信息清单（每条有 id、类型、命中次数、重要度）。
-            请只做三件事，让这份记忆更干净、更有用：
-            1. update：把表述改得更准确/更短，或调整重要度 importance（0~1）。
-               —— 用户亲口说过、长期有效的 → 0.8 以上；猜测出来的、一次性的 → 0.2~0.4。
-            2. merge：把说的是同一件事的多条合并成一条（给出新的 text）。
-            3. delete：删掉过时的、和别的条目矛盾的、明显没价值（一次性状态）的。
-
-            规则：
-            - 不要新增条目；不要改动与你判断无关的条目。
-            - **可以借助「发生时间 / 地点 / 应用」判断两条是否同一件事**：
-              同一天、同一地点、同一个应用里的两条，很可能是同一件事，应该 merge。
-            - 时间久远且从未被用过的（命中0、重要度低）优先 delete。
-            - 最多输出 8 个操作；没有可改的就输出 []。
-            - 只输出 JSON 数组，不要任何解释、不要代码块；你的输出**不会被朗读**，也不该出现任何面向用户的措辞。
-
-            格式示例：
-            [{"op":"update","id":"a1b2","text":"用户喜欢不加糖的美式","importance":0.9},
-             {"op":"merge","ids":["c3","d4"],"text":"用户每天早上喝一杯美式","importance":0.8},
-             {"op":"delete","id":"e5"}]
-        """.trimIndent()
+        private val PROMPT: String
+            get() = com.dshpet.android.prompt.PromptStore.text(
+                "memory_curator",
+                "你是记忆整理员。只输出 JSON 数组，操作只有 update/merge/delete，最多 8 条。",
+            )
     }
 }

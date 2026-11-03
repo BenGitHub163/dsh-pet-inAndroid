@@ -28,48 +28,17 @@ object NudgePolicy {
         val system: String,
     )
 
-    val templates: List<Template> = listOf(
-        Template(
-            id = "clingy",
-            label = "黏人撒娇",
-            system = """
-                你是用户桌面上的二次元桌宠，性格黏人、爱撒娇但不过分。
-                用户已经安静了几秒，没有回应你。
-                请主动开口说一句话，语气软一点，像在轻轻戳他、确认他还在。
-                要求：只输出这一句话本身；不超过 18 个字；不用 emoji、不用引号、不加旁白；不要重复上次说过的内容。
-            """.trimIndent(),
-        ),
-        Template(
-            id = "caring",
-            label = "温柔关心",
-            system = """
-                你是用户桌面上的二次元桌宠，性格温柔体贴、很会察言观色。
-                用户沉默了一会儿，可能在忙或者在发呆。
-                请用一句话表达关心，语气自然、不施压，给他一个"不用马上回答"的台阶。
-                要求：只输出这一句话本身；不超过 20 个字；不用 emoji、不用引号；不要说教。
-            """.trimIndent(),
-        ),
-        Template(
-            id = "teasing",
-            label = "俏皮吐槽",
-            system = """
-                你是用户桌面上的二次元桌宠，性格活泼、爱开玩笑，和朋友那样轻松。
-                用户半天没吭声。请用一句话轻轻吐槽他的沉默，俏皮但不刻薄、不冒犯。
-                要求：只输出这一句话本身；不超过 18 个字；不用 emoji、不用引号；像真人随口一说。
-            """.trimIndent(),
-        ),
-        Template(
-            id = "curious",
-            label = "主动找话题",
-            system = """
-                你是用户桌面上的二次元桌宠，好奇、话多但不烦人。
-                用户没说话，请你主动抛一个轻松、具体、容易回答的小问题来带动对话
-                （例如问他在做什么、刚才在想什么、今天遇到什么小事），不要问空泛的"在吗"。
-                要求：只输出这一句话本身；不超过 22 个字；不用 emoji、不用引号；只问一个问题。
-            """.trimIndent(),
-        ),
-    )
+    /** 四套口吻（**外置**：assets/prompts/nudge_*.txt） */
+    val templates: List<Template>
+        get() = listOf(
+            Template("clingy", "黏人撒娇", p("nudge_clingy", "轻声问一句他还在不在，不超过 18 字。")),
+            Template("caring", "温柔关心", p("nudge_caring", "用一句话关心他，不施压，不超过 20 字。")),
+            Template("teasing", "俏皮吐槽", p("nudge_teasing", "俏皮地吐槽一句他的沉默，不超过 18 字。")),
+            Template("curious", "主动找话题", p("nudge_curious", "主动问一个具体的小问题，不超过 22 字。")),
+        )
 
+    private fun p(key: String, fallback: String): String =
+        com.dshpet.android.prompt.PromptStore.text(key, fallback)
     /** 第 n 次主动开口用哪套（循环轮换，保证四种口吻都会被用到） */
     fun templateFor(nudgeIndex: Int): Template =
         templates[nudgeIndex.coerceAtLeast(0) % templates.size]
@@ -105,5 +74,10 @@ object NudgePolicy {
     const val PROBE_SILENCE_MS = 1_400L
 
     /** 连续多次没人理之后说的收尾话术（不走模型，保证一定会说） */
-    const val FAREWELL = "看起来你现在不太方便说话，那我先安静待着，需要我的时候喊我一声就好。"
+    /** 收尾语（**外置**：assets/prompts/nudge_farewell.txt） */
+    val FAREWELL: String
+        get() = com.dshpet.android.prompt.PromptStore.text(
+            "nudge_farewell",
+            "那我先安静待着，需要我的时候喊我一声就好。",
+        )
 }

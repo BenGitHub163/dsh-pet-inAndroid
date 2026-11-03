@@ -99,11 +99,10 @@ private val client: OkHttpClient = com.dshpet.android.api.ApiClient.read(60),
 
     private companion object {
         const val TAG = "DshVoiceVision"
-        val PROMPT = """
-            你是情绪观察员。看照片判断用户此刻的状态，只输出一到两句客观观察。
-            可以说：是否疲惫（眼神/姿态）、是否在笑、是否皱眉、是否看着屏幕、精神好不好。
-            禁止：评价长相、猜年龄性别、描述背景或穿着、做任何身份推断。
-            格式示例：用户看起来有点疲惫，眼睛半睁，没在笑。
-        """.trimIndent()
+        val PROMPT: String
+            get() = com.dshpet.android.prompt.PromptStore.text(
+                "vision_observe",
+                "你是情绪观察员。只输出一到两句客观观察，不评价长相、不猜身份。",
+            )
     }
 }

@@ -211,12 +211,11 @@ object PersonaPrompts {
         append("\n【语气示范】\n").append(persona.example).append('\n')
         append("\n【").append(mood.describe()).append("】\n")
         append(
-            "行为要求：\n" +
-                "1. 情绪要能被听出来（生气时句子短、带停顿；开心时可以连着说两句）。\n" +
-                "2. 如果用户情绪不好（累/烦/难过），先接住他，再给一句轻的建议；不要讲道理。\n" +
-                "3. 如果自己正在生气，别一秒就原谅，先冷淡一两句；用户道歉了才缓和。\n" +
-                "4. 不能虚报情绪（比如被骂了还立刻撒娇），也不能把上面这些状态念出来。\n" +
-                persona.postHistory
+            com.dshpet.android.prompt.PromptStore.text(
+                "persona_rules",
+                "行为要求：情绪要能被听出来；用户情绪差时先接住再给一句轻建议；不要虚报情绪。",
+            ) +
+            persona.postHistory
         )
     }
 }
