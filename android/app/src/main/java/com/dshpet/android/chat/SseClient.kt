@@ -46,6 +46,7 @@ object SseClient {
     /**
      * 流式请求。onDelta 在主线程回调；返回的 Job 可 cancel()。
      */
+    @com.dshpet.android.util.TraceLog(module = "API", level = "I")
     fun stream(
         cfg: ChatCfg,
         messages: List<Msg>,

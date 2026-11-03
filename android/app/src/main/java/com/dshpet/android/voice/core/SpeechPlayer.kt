@@ -39,6 +39,7 @@ class SpeechPlayer(private val ctx: Context) {
     fun isCurrent(s: Long): Boolean = s == session
 
     /** 开始一次新的说话（打断上一次，并丢掉上一轮缓冲里残留的音频） */
+    @com.dshpet.android.util.TraceLog(module = "AUDIO", level = "D")
     fun startSession(rate: Int = DEFAULT_RATE): Long {
         session++
         ensureTrack(rate)
@@ -51,6 +52,7 @@ class SpeechPlayer(private val ctx: Context) {
     }
 
     /** 打断：令牌失效 + 立刻静音 + 归还焦点 */
+    @com.dshpet.android.util.TraceLog(module = "AUDIO", level = "D")
     fun abort() {
         session++
         runCatching { track?.pause(); track?.flush() }

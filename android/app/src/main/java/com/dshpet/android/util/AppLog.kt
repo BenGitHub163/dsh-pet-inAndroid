@@ -51,16 +51,30 @@ object AppLog {
     }
 
     @Synchronized
-    fun log(tag: String, msg: String) {
-        // 先打 logcat：即使文件日志尚未 init，也不会静默丢日志
-        android.util.Log.i("Dsh_$tag", msg)
+    fun log(tag: String, msg: String) = logWithLevel("I", tag, msg)
+
+    /**
+     * 带等级的日志：AOP 插桩（[AppTrace]）走这里。
+     *
+     * V 只进 logcat 不落盘（逐帧/逐 delta 会把文件刷爆）；
+     * D/I/W 同时进 logcat 与文件，文件里带等级前缀，方便按级别过滤。
+     */
+    @Synchronized
+    fun logWithLevel(level: String, tag: String, msg: String) {
+        val lv = level.uppercase(Locale.US)
+        when (lv) {
+            "V" -> { android.util.Log.v("Dsh_$tag", msg); return }
+            "D" -> android.util.Log.d("Dsh_$tag", msg)
+            "W" -> android.util.Log.w("Dsh_$tag", msg)
+            else -> android.util.Log.i("Dsh_$tag", msg)
+        }
         val d = dir ?: return
         val now = Date()
         val date = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(now)
         val time = SimpleDateFormat("HH:mm:ss.SSS", Locale.US).format(now)
         val f = File(d, "$date.log")
         try {
-            f.appendText("$time [$tag] $msg\n")
+            f.appendText("$time [$lv][$tag] $msg\n")
         } catch (e: Exception) {
             Log.w("AppLog", "写入日志失败", e)
         }

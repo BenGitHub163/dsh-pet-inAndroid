@@ -43,16 +43,9 @@ object AppTrace {
     }
 
     private fun log(level: Level, module: String, msg: String) {
-        val tag = "Dsh_$module"
         val thread = Thread.currentThread().name
         val line = "$msg | $thread"
-        runCatching {
-            when (level) {
-                Level.V -> Log.v(tag, line)
-                Level.D -> Log.d(tag, line)
-                Level.I -> Log.i(tag, line)
-                Level.W -> Log.w(tag, line)
-            }
-        }
+        // 走 AppLog 的等级通道：V 只进 logcat，D/I/W 同时落文件（文件里带 [级别][模块] 前缀）
+        runCatching { AppLog.logWithLevel(level.name, module, line) }
     }
 }

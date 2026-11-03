@@ -559,6 +559,7 @@ open class PetOverlayService : Service() {
 
     // ================================================================ 生命周期
     /** 服务创建：只做轻量初始化（配置引用、屏幕密度）。窗口要等 `onStartCommand` 里权限校验通过再建。 */
+    @com.dshpet.android.util.TraceLog(module = "SVC", level = "I")
     override fun onCreate() {
         super.onCreate()
         android.util.Log.i("DshSvc", "onCreate instance=$instanceId")
@@ -696,6 +697,7 @@ open class PetOverlayService : Service() {
     }
 
     /** 服务销毁：停语音 → 关窗口/菜单/气泡 → 卸配置监听 → 退出碰撞体 → 清静态实例表，保证下次能干净重建。 */
+    @com.dshpet.android.util.TraceLog(module = "SVC", level = "I")
     override fun onDestroy() {
         runCatching { if (::taps.isInitialized) taps.release() }
         runCatching { stopVoiceInOverlay() }
