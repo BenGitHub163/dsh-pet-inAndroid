@@ -30,7 +30,19 @@ object SseClient {
         val verifySsl: Boolean,
     )
 
-    data class Msg(val role: String, val content: String)
+    /**
+     * 一条消息。后三个字段是**工具调用**与**思考模式**必需的回传字段：
+     *  - [reasoningContent]：带 tools 时 DeepSeek 要求逐轮回传，缺了报 400；
+     *  - [toolCalls]：assistant 消息里的工具调用（原样 JSON 字符串）；
+     *  - [toolCallId]：role=tool 的结果必须指回对应的调用 id。
+     */
+    data class Msg(
+        val role: String,
+        val content: String,
+        val reasoningContent: String? = null,
+        val toolCalls: String? = null,
+        val toolCallId: String? = null,
+    )
 
     fun normalizeEndpoint(baseUrl: String, chatPath: String = "/v1/chat/completions"): String {
         val base = baseUrl.trim().trimEnd('/')
@@ -56,14 +68,21 @@ object SseClient {
     ): Job {
         android.util.Log.i("DshChat", "STREAMURL base=${cfg.baseUrl} path=${cfg.chatPath} keyLen=${cfg.apiKey.length} maxTok=${cfg.maxTokens}")
         val cancelled = AtomicBoolean(false)
-        return kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+        val activeCall = java.util.concurrent.atomic.AtomicReference<okhttp3.Call?>(null)
+        val job = kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
             try {
                 val endpoint = normalizeEndpoint(cfg.baseUrl, cfg.chatPath)
             android.util.Log.i("DshChat", "url=$endpoint model=${cfg.model} keyLen=${cfg.apiKey.length} maxTokens=${cfg.maxTokens} temp=${cfg.temperature}")
                 val payload = JSONObject().apply {
                     put("model", cfg.model)
                     val arr = JSONArray()
-                    messages.forEach { arr.put(JSONObject().put("role", it.role).put("content", it.content)) }
+                    messages.forEach { m ->
+                        val o = JSONObject().put("role", m.role).put("content", m.content)
+                        m.reasoningContent?.let { o.put("reasoning_content", it) }
+                        m.toolCalls?.let { o.put("tool_calls", JSONArray(it)) }
+                        m.toolCallId?.let { o.put("tool_call_id", it) }
+                        arr.put(o)
+                    }
                     put("messages", arr)
                     put("stream", true)
                     put("temperature", cfg.temperature)
@@ -79,7 +98,9 @@ object SseClient {
                 android.util.Log.i("DshChat", "hdr authLen=" + cfg.apiKey.length + " accept=text/event-stream")
                     }
                     .build()
-                val resp = client.newCall(req).execute()
+                val call = client.newCall(req)
+                activeCall.set(call)
+                val resp = call.execute()
                 if (!resp.isSuccessful) {
                     val detail = resp.body?.string().orEmpty()
                     val code = resp.code
@@ -95,13 +116,16 @@ object SseClient {
                     return@launch
                 }
                 val parser = SseParser()
-                while (!cancelled.get()) {
-                    val line = source.readUtf8Line() ?: break
-                    for (delta in parser.feedLine(line)) {
-                        if (cancelled.get()) return@launch
-                        withContext(Dispatchers.Main) { onDelta(delta) }
+                // use{} 保证异常/取消时也关闭 Response（否则连接泄漏）
+                resp.use {
+                    while (!cancelled.get()) {
+                        val line = source.readUtf8Line() ?: break
+                        for (delta in parser.feedLine(line)) {
+                            if (cancelled.get()) return@launch
+                            withContext(Dispatchers.Main) { onDelta(delta) }
+                        }
+                        if (parser.done) break
                     }
-                    if (parser.done) break
                 }
                 withContext(Dispatchers.Main) { onDone() }
             } catch (e: Exception) {
@@ -114,6 +138,9 @@ object SseClient {
                 withContext(Dispatchers.Main) { onError(msg) }
             }
         }
+        // Job.cancel() 打不断阻塞的 readUtf8Line，必须显式 cancel 底层 Call
+        job.invokeOnCompletion { activeCall.getAndSet(null)?.cancel() }
+        return job
     }
 
     /** 连接测试（移植 test_connection）：最小非流式请求 */
