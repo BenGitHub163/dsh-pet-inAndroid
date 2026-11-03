@@ -39,64 +39,16 @@ class BreezeTtsProvider(private val cfg: TtsConfig) : TtsProvider {
 
     override fun isConfigured(): Boolean = cfg.apiKey.isNotBlank()
 
+    /** HTTP 与错误映射已重构进 api/TtsApi；这里只剩"这家服务商怎么编解码"的委托 */
+    private val api = com.dshpet.android.api.TtsApi(com.dshpet.android.api.BreezeCodec())
+
     override suspend fun synthesize(
         text: String,
-        voice: VoiceProfile,
-        onChunk: (AudioChunk) -> Unit,
-    ) = withContext(Dispatchers.IO) {
-        if (!isConfigured()) throw TtsError.NotConfigured()
-        if (text.isBlank()) return@withContext
-        val voiceId = voice.voiceId.ifBlank { throw TtsError.Protocol("Breeze 音色 ID 为空") }
-        val format = (cfg.extra["format"] ?: "pcm").lowercase()
-        val body = JSONObject()
-            .put("text", text)
-            .put("model_id", cfg.extra["model_id"] ?: "breeze-tts-2")
-            .apply {
-                cfg.extra["language_code"]?.takeIf { it.isNotBlank() }?.let { put("language_code", it) }
-            }
-            .toString()
-        val url = com.dshpet.android.api.BreezeApi.ttsStreamUrl(voiceId, format)
-        val req = Request.Builder()
-            .url(url)
-            .addHeader(com.dshpet.android.api.BreezeApi.HEADER_KEY, cfg.apiKey)
-            .post(body.toRequestBody("application/json".toMediaType()))
-            .build()
-
-        val c = client.newCall(req)
-        call = c
-        try {
-            c.execute().use { resp ->
-                if (!resp.isSuccessful) {
-                    val err = runCatching { resp.body?.string().orEmpty() }.getOrDefault("")
-                    throw when (resp.code) {
-                        401, 403 -> TtsError.Auth("Breeze 鉴权失败 HTTP ${resp.code}")
-                        429 -> TtsError.RateLimited("Breeze 限流 HTTP 429 $err")
-                        402 -> TtsError.Auth("Breeze 额度不足 $err")
-                        in 500..599 -> TtsError.Server("Breeze ${resp.code} $err")
-                        else -> TtsError.Protocol("Breeze HTTP ${resp.code} $err")
-                    }
-                }
-                val src = resp.body?.source() ?: throw TtsError.Protocol("Breeze 空响应")
-                val sampleRate = cfg.extra["sample_rate"]?.toIntOrNull() ?: 24000
-                val buf = ByteArray(8192)
-                while (!src.exhausted()) {
-                    val n = src.read(buf)
-                    if (n <= 0) break
-                    val bytes = buf.copyOf(n)
-                    if (format == "pcm") {
-                        onChunk(AudioChunk(pcm = bytes, sampleRate = sampleRate))
-                    } else {
-                        onChunk(AudioChunk(encoded = bytes, sampleRate = sampleRate))
-                    }
-                }
-            }
-        } catch (e: TtsError) {
-            throw e
-        } catch (e: Throwable) {
-            if (c.isCanceled()) throw TtsError.Cancelled() else throw TtsError.Network(e.message ?: "网络错误", e)
-        } finally {
-            call = null
-        }
+        voice: com.dshpet.android.voice.VoiceProfile,
+        onChunk: (com.dshpet.android.voice.AudioChunk) -> Unit,
+    ) {
+        if (!isConfigured()) throw com.dshpet.android.voice.TtsError.NotConfigured()
+        api.synthesize(text, voice, cfg, onChunk)
     }
 
     override fun cancel() {
