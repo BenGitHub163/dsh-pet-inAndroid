@@ -45,24 +45,12 @@ private val client = com.dshpet.android.api.ApiClient.read(30)
      * 从服务端拉列表并写缓存。返回 `id → name`。
      * 失败时抛出，调用方决定是否用缓存兜底。
      */
-    suspend fun fetch(ctx: Context, apiKey: String, language: String = "zh"): List<Pair<String, String>> =
-        withContext(Dispatchers.IO) {
-            val url = "https://api.breeze.blue/v1/voices?language_code=$language&page_size=100"
-            val req = Request.Builder().url(url).addHeader("xi-api-key", apiKey).get().build()
-            client.newCall(req).execute().use { resp ->
-                val body = resp.body?.string().orEmpty()
-                if (!resp.isSuccessful) error("HTTP ${resp.code}")
-                val arr = JSONObject(body).optJSONArray("voices") ?: JSONArray()
-                val list = (0 until arr.length()).mapNotNull { i ->
-                    val o = arr.optJSONObject(i) ?: return@mapNotNull null
-                    val id = o.optString("voice_id")
-                    if (id.isBlank()) null else id to o.optString("name").ifBlank { "未命名音色" }
-                }
-                saveCache(ctx, list)
-                list
-            }
-        }
-
+    /** 从服务端拉列表并写缓存（网络在 api/BreezeApi，本类只做缓存） */
+    suspend fun fetch(ctx: Context, apiKey: String, language: String = "zh"): List<Pair<String, String>> {
+        val list = com.dshpet.android.api.BreezeApi.listVoices(apiKey, language)
+        saveCache(ctx, list)
+        return list
+    }
     private fun saveCache(ctx: Context, list: List<Pair<String, String>>) {
         val arr = JSONArray()
         list.forEach { (id, name) ->

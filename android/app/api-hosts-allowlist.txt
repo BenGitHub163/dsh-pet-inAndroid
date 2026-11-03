@@ -10,7 +10,6 @@
 # 格式：一行一个路径（相对 app/src/main/java），# 开头为注释。
 
 com/dshpet/android/MainActivity.kt
-com/dshpet/android/voice/BreezeVoices.kt
 com/dshpet/android/voice/VoiceApiActivity.kt
 com/dshpet/android/voice/providers/BreezeTtsProvider.kt
 com/dshpet/android/voice/providers/VolcengineTtsProvider.kt
