@@ -11,8 +11,6 @@ import com.dshpet.android.voice.providers.VolcengineTtsProvider
 /**
  * 外部 API 的唯一入口。
  *
- * 历史：这里原来有 `ApiFactory.kt` 和 `ApiFactory2.kt` 两个文件，"2" 只是后来加东西时
- * 不想动老文件留下的后缀，内容其实分属两层。现在合成一个文件、两个对象：
  *
  * | | [ApiFactory] | [ApiTargets] |
  * |---|---|---|

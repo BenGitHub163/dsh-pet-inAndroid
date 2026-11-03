@@ -114,3 +114,67 @@ dependencies {
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
+
+// ============================================================================
+// checkApiHosts：域名/接口地址只允许出现在 api/ 目录
+// ----------------------------------------------------------------------------
+// 背景：key + 站点 的调用一度散落在 provider、UI、配置层（同一个 deepseek 地址写了 5 遍），
+// 换代理/换模型就会漏改。这个任务把"合规边界"变成构建期约束：
+//   · app/src/main/**/*.kt 里出现 http(s):// 且文件不在 api/ 下 → 失败；
+//   · 存量债写在 app/api-hosts-allowlist.txt，迁移一个删一行；
+//   · 清单里的文件如果已经不再含 URL，会提示把这行删掉（防止清单腐烂）。
+// ============================================================================
+val apiHostsAllowlist = rootProject.file("app/api-hosts-allowlist.txt")
+
+val checkApiHosts by tasks.registering {
+    group = "verification"
+    description = "禁止在 api/ 以外硬编码接口域名（key + 站点 必须收敛到 ApiFactory 接口层）"
+    val srcDir = file("src/main/java")
+    val allowFile = apiHostsAllowlist
+    inputs.dir(srcDir).withPropertyName("sources")
+    inputs.file(allowFile).withPropertyName("allowlist").optional(true)
+    doLast {
+        val allow = if (allowFile.exists()) {
+            allowFile.readLines()
+                .map { it.trim() }
+                .filter { it.isNotEmpty() && !it.startsWith("#") }
+                .toSet()
+        } else {
+            emptySet<String>()
+        }
+        val urlRegex = Regex("""https?://[^\s"'`)]+""")
+        val violations = mutableListOf<String>()
+        val stale = allow.toMutableSet()
+        srcDir.walkTopDown().filter { it.isFile && it.extension == "kt" }.forEach { f ->
+            val rel = f.relativeTo(srcDir).invariantSeparatorsPath
+            if (rel.startsWith("com/dshpet/android/api/")) return@forEach
+            val hits = f.readLines().withIndex()
+                .filter { (_, line) -> urlRegex.containsMatchIn(line) }
+                .map { (i, line) -> "${i + 1}: " + urlRegex.find(line)!!.value }
+            if (hits.isEmpty()) return@forEach
+            if (rel in allow) {
+                stale.remove(rel)
+                logger.lifecycle("  [已知债] $rel (${hits.size} 处)")
+            } else {
+                hits.forEach { violations += "  $rel:$it" }
+            }
+        }
+        if (stale.isNotEmpty()) {
+            logger.warn("api-hosts-allowlist.txt 里这些文件已不再含 URL，请删掉对应行：")
+            stale.forEach { logger.warn("  - $it") }
+        }
+        if (violations.isNotEmpty()) {
+            throw GradleException(
+                buildString {
+                    appendLine("发现 api/ 之外的硬编码接口地址（${violations.size} 处）：")
+                    violations.forEach { appendLine(it) }
+                    appendLine("规则：域名/路径只写在 api/ 下的接口类里；业务层通过 ApiFactory 调用。")
+                    appendLine("存量迁移中：可临时加进 app/api-hosts-allowlist.txt，但不要新增。")
+                },
+            )
+        }
+        logger.lifecycle("checkApiHosts: 通过（api/ 之外无新增硬编码域名）")
+    }
+}
+
+tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(checkApiHosts) }
