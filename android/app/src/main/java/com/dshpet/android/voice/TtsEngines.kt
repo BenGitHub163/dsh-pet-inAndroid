@@ -31,6 +31,7 @@ object TtsEngines {
         ID_SYSTEM to "系统语音合成（兜底）",
     )
 
+    @com.dshpet.android.util.TraceLog(module = "TTS", level = "D")
     fun create(ctx: Context, cfg: TtsConfig): TtsProvider = when (cfg.providerId) {
         ID_VOLCENGINE -> VolcengineTtsProvider(cfg)
         ID_OPENAI -> OpenAiCompatTtsProvider(cfg)

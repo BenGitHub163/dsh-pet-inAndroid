@@ -1604,6 +1604,7 @@ open class PetOverlayService : Service() {
     /** 语音状态胶囊（听/思考/说话），独立小窗，避免占用桌宠窗口空间 */
     private val voiceBadge by lazy { VoiceStateBadge(this) }
 
+    @com.dshpet.android.util.TraceLog(module = "VOICE", level = "I")
     private fun startVoiceInOverlay() {
         if (voiceLoop != null) return
         // 没有麦克风权限时别直接失败：Service 里弹不出权限框，把语音页捞起来让它申请，
@@ -1678,6 +1679,7 @@ open class PetOverlayService : Service() {
             com.dshpet.android.voice.core.VoiceState.Idle -> b.hide()
         }
     }
+    @com.dshpet.android.util.TraceLog(module = "VOICE", level = "I")
     private fun stopVoiceInOverlay() {
         com.dshpet.android.voice.core.VoiceRuntime.stop()
         voiceLoop = null

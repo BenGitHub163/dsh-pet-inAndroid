@@ -37,6 +37,7 @@ class MemoryExtractor(
     private val cfgProvider: () -> SseClient.ChatCfg,
 ) {
 
+    @com.dshpet.android.util.TraceLog(module = "MEM", level = "D")
     suspend fun extract(userText: String, answer: String, ctx: MemoryContext = MemoryContext()): List<MemoryItem> {
         if (userText.length < 4) return emptyList()
         val messages = listOf(

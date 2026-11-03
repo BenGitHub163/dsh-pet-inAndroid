@@ -344,6 +344,7 @@ class VoiceLoop(context: Context) {
      * 用户沉默 → 让 DeepSeek 按 [NudgePolicy] 里的一套人格主动说一句话。
      * 注意：提示词通过 system 消息下发，不污染历史里的 user 内容。
      */
+    @com.dshpet.android.util.TraceLog(module = "VOICE", level = "D")
     private suspend fun nudge(tts: TtsProvider, voice: VoiceProfile) {
         val tpl = NudgePolicy.templateFor(nudgesSinceSpeech)
         _events.tryEmit(VoiceEvent.Info("主动开口（${tpl.label}）"))
@@ -364,6 +365,7 @@ class VoiceLoop(context: Context) {
     }
 
     /** 连续几次都没人理 → 说句收尾话再退出，别一直唠叨 */
+    @com.dshpet.android.util.TraceLog(module = "VOICE", level = "I")
     private suspend fun sayFarewellThenStop(tts: TtsProvider, voice: VoiceProfile) {
         _events.tryEmit(VoiceEvent.AssistantSaid(NudgePolicy.FAREWELL))
         speakText(tts, voice, NudgePolicy.FAREWELL, userText = "（沉默）")

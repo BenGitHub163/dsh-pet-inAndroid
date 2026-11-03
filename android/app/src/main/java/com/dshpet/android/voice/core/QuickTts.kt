@@ -25,6 +25,7 @@ import kotlinx.coroutines.withContext
 object QuickTts {
 
     /** 念一句话；true = 真的播完了 */
+    @com.dshpet.android.util.TraceLog(module = "SELFTALK", level = "D")
     suspend fun speak(ctx: Context, text: String): Boolean = withContext(Dispatchers.IO) {
         val t = text.trim()
         if (t.isEmpty()) return@withContext false

@@ -27,6 +27,7 @@ import com.dshpet.android.voice.providers.VolcengineTtsProvider
 object ApiFactory {
 
     /** DeepSeek 对话配置（返回值可直接 `.copy(...)` 微调） */
+    @com.dshpet.android.util.TraceLog(module = "API", level = "D")
     fun chat(ctx: Context, maxTokens: Int = 2048): SseClient.ChatCfg =
         ChatConfigFactory.build(ctx, maxTokens)
 
