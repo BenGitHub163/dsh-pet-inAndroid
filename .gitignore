@@ -73,4 +73,5 @@ cache/*
 
 # 本地内置 Key，别提交
 keys.properties
-
+# 复合构建的 Gradle 临时目录
+android/gradle/log-aop/.gradle/
