@@ -178,9 +178,11 @@ val checkApiHosts by tasks.registering {
                 },
             )
         }
-        // ---- 第二条规则（当前为"仅告警"模式）：HTTP 调用只允许在 api/ 内 ----
-        // 打开为失败模式的条件：TTS 三个 provider 与 SseClient 都改造成"编解码器 + api/TtsApi"。
-        val httpMarker = Regex("""Request\.Builder\(|\.newCall\(|toRequestBody\(""")
+        // ---- 第二条规则（失败模式）：HTTP 调用只允许在 api/ 内 ----
+        // 已切失败：TTS 三个 provider 走 TtsCodec + api/TtsApi，对话走 api/ChatStream。
+        // `\b` 不能省：SpeechPlayer 里的 `AudioFocusRequest.Builder(...)` 是 AudioTrack 的焦点请求，
+        // 不是 HTTP，去掉词边界就变成永久误报。
+        val httpMarker = Regex("""\bRequest\.Builder\(|\.newCall\(|toRequestBody\(""")
         val httpOffenders = mutableListOf<String>()
         srcDir.walkTopDown().filter { it.isFile && it.extension == "kt" }.forEach { f ->
             val rel = f.relativeTo(srcDir).invariantSeparatorsPath
@@ -189,10 +191,17 @@ val checkApiHosts by tasks.registering {
             if (n > 0) httpOffenders += "$rel ($n 处)"
         }
         if (httpOffenders.isNotEmpty()) {
-            logger.warn("checkApiHosts[待清理] 这些文件仍在 api/ 之外发 HTTP（应改造成编解码器或接口层）：")
-            httpOffenders.forEach { logger.warn("  - $it") }
+            throw GradleException(
+                buildString {
+                    appendLine("发现 api/ 之外的 HTTP 调用（${httpOffenders.size} 个文件）：")
+                    httpOffenders.forEach { appendLine("  - $it") }
+                    appendLine("规则：请求组装与发送只写在 api/ 下。")
+                    appendLine("新增服务商：写 api/XxxCodec.kt（只拼报文/解流），由 api/TtsApi 发；")
+                    appendLine("对话类接口写进 api/ChatStream.kt，不要在业务层 newCall。")
+                },
+            )
         }
-        logger.lifecycle("checkApiHosts: 通过（api/ 之外无新增硬编码域名）")
+        logger.lifecycle("checkApiHosts: 通过（api/ 之外无硬编码域名、无 HTTP 调用）")
     }
 }
 
