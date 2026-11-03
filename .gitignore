@@ -37,6 +37,8 @@ dist/
 LOG.md
 LOG-INDEX.md
 SPEC.md
+# docs/tool-router 要入库
+!docs/tool-router/*.md
 # onedir build artifacts
 dist-onedir/
 build-onedir/
