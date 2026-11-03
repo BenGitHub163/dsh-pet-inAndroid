@@ -103,33 +103,33 @@ object ChatStream {
                     .build()
                 val call = client.newCall(req)
                 activeCall.set(call)
-                val resp = call.execute()
-                if (!resp.isSuccessful) {
-                    val detail = resp.body?.string().orEmpty()
-                    val code = resp.code
-                    val msg = safeErrorDetail(detail)
-                    withContext(Dispatchers.Main) {
-                        onError(if (code in setOf(401, 403)) "认证失败（HTTP $code）：$msg"
-                        else "请求失败（HTTP $code）：$msg")
+                // use{} 要包住**整段**：失败分支以前直接 return，Response 没人关 → 连接泄漏
+                call.execute().use { resp ->
+                    if (!resp.isSuccessful) {
+                        val code = resp.code
+                        val msg = safeErrorDetail(resp.body?.string().orEmpty())
+                        withContext(Dispatchers.Main) {
+                            onError(if (code in setOf(401, 403)) "认证失败（HTTP $code）：$msg"
+                            else "请求失败（HTTP $code）：$msg")
+                        }
+                        return@use
                     }
-                    return@launch
-                }
-                val source = resp.body?.source() ?: run {
-                    withContext(Dispatchers.Main) { onError("网络连接失败") }
-                    return@launch
-                }
-                val parser = SseParser()
-                // use{} 保证异常/取消时也关闭 Response（否则连接泄漏）
-                resp.use {
+                    val source = resp.body?.source() ?: run {
+                        withContext(Dispatchers.Main) { onError("网络连接失败") }
+                        return@use
+                    }
+                    val parser = SseParser()
                     while (!cancelled.get()) {
                         val line = source.readUtf8Line() ?: break
                         for (delta in parser.feedLine(line)) {
-                            if (cancelled.get()) return@launch
+                            if (cancelled.get()) return@use
                             withContext(Dispatchers.Main) { onDelta(delta) }
                         }
                         if (parser.done) break
                     }
                 }
+                // 被打断的流不该回调 onDone（它是"取消"结束，不是"完成"）
+                if (cancelled.get()) return@launch
                 withContext(Dispatchers.Main) { onDone() }
             } catch (e: Exception) {
                 val msg = when (e) {
@@ -141,8 +141,11 @@ object ChatStream {
                 withContext(Dispatchers.Main) { onError(msg) }
             }
         }
-        // Job.cancel() 打不断阻塞的 readUtf8Line，必须显式 cancel 底层 Call
-        job.invokeOnCompletion { activeCall.getAndSet(null)?.cancel() }
+        // Job.cancel() 打不断阻塞的 readUtf8Line：先置位（让循环自己退），再 cancel 底层 Call
+        job.invokeOnCompletion {
+            cancelled.set(true)
+            activeCall.getAndSet(null)?.cancel()
+        }
         return job
     }
 
