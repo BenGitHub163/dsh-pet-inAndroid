@@ -14,5 +14,5 @@ package com.dshpet.android.api
 object ApiDefaults {
     const val CHAT_BASE_URL = "https://api.deepseek.com"
     const val CHAT_PATH = "/v1/chat/completions"
-    const val CHAT_MODEL = "deepseek-chat"
+    const val CHAT_MODEL = "deepseek-flash"
 }
