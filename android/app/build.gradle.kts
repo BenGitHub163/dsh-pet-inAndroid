@@ -178,6 +178,20 @@ val checkApiHosts by tasks.registering {
                 },
             )
         }
+        // ---- 第二条规则（当前为"仅告警"模式）：HTTP 调用只允许在 api/ 内 ----
+        // 打开为失败模式的条件：TTS 三个 provider 与 SseClient 都改造成"编解码器 + api/TtsApi"。
+        val httpMarker = Regex("""Request\.Builder\(|\.newCall\(|toRequestBody\(""")
+        val httpOffenders = mutableListOf<String>()
+        srcDir.walkTopDown().filter { it.isFile && it.extension == "kt" }.forEach { f ->
+            val rel = f.relativeTo(srcDir).invariantSeparatorsPath
+            if (rel.startsWith("com/dshpet/android/api/")) return@forEach
+            val n = f.readLines().count { httpMarker.containsMatchIn(it) }
+            if (n > 0) httpOffenders += "$rel ($n 处)"
+        }
+        if (httpOffenders.isNotEmpty()) {
+            logger.warn("checkApiHosts[待清理] 这些文件仍在 api/ 之外发 HTTP（应改造成编解码器或接口层）：")
+            httpOffenders.forEach { logger.warn("  - $it") }
+        }
         logger.lifecycle("checkApiHosts: 通过（api/ 之外无新增硬编码域名）")
     }
 }
