@@ -24,7 +24,6 @@ object VoiceTtsFactory {
     ): TtsConfig = when (s.provider) {
         VoiceSettings.PROVIDER_BREEZE -> TtsConfig(
             providerId = TtsEngines.ID_BREEZE,
-            apiKey = s.breezeKey,
             extra = mapOf(
                 "format" to "pcm",              // 流式播 PCM，省一层解码
                 "sample_rate" to "24000",
@@ -36,7 +35,6 @@ object VoiceTtsFactory {
 
         else -> TtsConfig(
             providerId = TtsEngines.ID_VOLCENGINE,
-            apiKey = s.doubaoKey,
             resourceId = s.resourceId,
             extra = mapOf(
                 "format" to s.format,
@@ -69,9 +67,12 @@ object VoiceTtsFactory {
         create(ctx, VoiceSettingsStore.get(ctx).load(), moodRate, moodLoud)
 
     /** 当前设置是否可用（缺 Key 时上层可以直接降级，不要报错） */
-    fun isReady(s: VoiceSettings): Boolean = when (s.provider) {
-        VoiceSettings.PROVIDER_BREEZE -> s.breezeKey.isNotBlank() && s.breezeVoiceId.isNotBlank()
-        VoiceSettings.PROVIDER_SYSTEM -> true
-        else -> s.doubaoKey.isNotBlank()
+    fun isReady(s: VoiceSettings): Boolean {
+        val keys = com.dshpet.android.data.KeyFactory.current()
+        return when (s.provider) {
+            VoiceSettings.PROVIDER_BREEZE -> keys.hasBreeze && s.breezeVoiceId.isNotBlank()
+            VoiceSettings.PROVIDER_SYSTEM -> true
+            else -> keys.hasDoubao
+        }
     }
 }

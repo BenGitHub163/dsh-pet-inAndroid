@@ -2810,14 +2810,13 @@ open class PetOverlayService : Service() {
 
     fun showBalanceInBubble() {
         scope.launch {
-            val apiKey = config.chatApiKey()
-            if (apiKey.isBlank()) {
+            if (!com.dshpet.android.data.KeyFactory.current().hasDeepseek) {
                 showBubble("未配置 AI API Key，无法查询余额", 6000)
                 return@launch
             }
             showBubble("让我看看余额…", 6000)
             val r = withContext(Dispatchers.IO) {
-                Balance.fetch(config.chatBaseUrl(), apiKey, config.chatVerifySsl(), config.chatTimeout())
+                Balance.fetch(config.chatBaseUrl(), config.chatVerifySsl(), config.chatTimeout())
             }
             r.fold(
                 onSuccess = { txt ->

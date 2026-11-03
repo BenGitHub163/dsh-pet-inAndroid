@@ -10,10 +10,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
- * 语音相关的用户配置（**Repository 模式**）。
- *
- * 现在用 SharedPreferences（测试期够用、读写同步、无需协程）；
- * 迁到正式功能时把实现换成 PetConfig 的 DataStore 即可，上层只依赖这个类。
+ * 语音相关的用户配置。音色/语速等走 prefs；三份 API Key 只作设置页表单字段，
+ * 真正落盘与读取一律经过 [com.dshpet.android.data.KeyFactory] + [com.dshpet.android.data.PetConfig]。
  */
 data class VoiceSettings(
     val doubaoKey: String = com.dshpet.android.data.KeyFactory.defaults().doubao,
@@ -91,9 +89,10 @@ class VoiceSettingsStore(private val ctx: Context) {
 
     fun load(): VoiceSettings {
         val d = VoiceSettings()
+        val keys = com.dshpet.android.data.KeyFactory.current()
         return VoiceSettings(
-            doubaoKey = prefs.getString(KEY_DOUBAO, d.doubaoKey) ?: d.doubaoKey,
-            deepseekKey = prefs.getString(KEY_DEEPSEEK, d.deepseekKey) ?: d.deepseekKey,
+            doubaoKey = keys.doubao.ifBlank { prefs.getString(KEY_DOUBAO, "") ?: "" }.ifBlank { d.doubaoKey },
+            deepseekKey = keys.deepseek.ifBlank { prefs.getString(KEY_DEEPSEEK, "") ?: "" }.ifBlank { d.deepseekKey },
             voiceId = prefs.getString(KEY_VOICE, d.voiceId) ?: d.voiceId,
             resourceId = prefs.getString(KEY_RESOURCE, d.resourceId) ?: d.resourceId,
             format = prefs.getString(KEY_FORMAT, d.format) ?: d.format,
@@ -107,15 +106,16 @@ class VoiceSettingsStore(private val ctx: Context) {
             emotionScale = prefs.getInt(KEY_EMOTION_SCALE, d.emotionScale),
             speechRate = prefs.getInt(KEY_SPEECH_RATE, d.speechRate),
             loudnessRate = prefs.getInt(KEY_LOUDNESS_RATE, d.loudnessRate),
-            breezeKey = prefs.getString(KEY_BREEZE_KEY, d.breezeKey) ?: d.breezeKey,
+            breezeKey = keys.breeze.ifBlank { prefs.getString(KEY_BREEZE_KEY, "") ?: "" }.ifBlank { d.breezeKey },
             breezeVoiceId = prefs.getString(KEY_BREEZE_VOICE, d.breezeVoiceId) ?: d.breezeVoiceId,
         )
     }
 
     fun save(s: VoiceSettings) {
         prefs.edit()
-            .putString(KEY_DOUBAO, s.doubaoKey)
-            .putString(KEY_DEEPSEEK, s.deepseekKey)
+            .remove(KEY_DOUBAO)
+            .remove(KEY_DEEPSEEK)
+            .remove(KEY_BREEZE_KEY)
             .putString(KEY_VOICE, s.voiceId)
             .putString(KEY_RESOURCE, s.resourceId)
             .putString(KEY_FORMAT, s.format)
@@ -129,16 +129,20 @@ class VoiceSettingsStore(private val ctx: Context) {
             .putInt(KEY_EMOTION_SCALE, s.emotionScale)
             .putInt(KEY_SPEECH_RATE, s.speechRate)
             .putInt(KEY_LOUDNESS_RATE, s.loudnessRate)
-            .putString(KEY_BREEZE_KEY, s.breezeKey)
             .putString(KEY_BREEZE_VOICE, s.breezeVoiceId)
             .apply()
-        // 立刻推给订阅者（apply() 是异步落盘，listener 可能晚一拍）
         _flow.value = s
-        // 老代码（QuickTts / API 测试 / VoiceRuntime 的兜底）读的是 PetConfig，这里保持一致
+        com.dshpet.android.data.KeyFactory.publish(
+            deepseek = s.deepseekKey,
+            doubao = s.doubaoKey,
+            breeze = s.breezeKey,
+        )
         SYNC_SCOPE.launch {
             runCatching {
                 val pet = com.dshpet.android.data.PetConfig.get(appCtx)
+                pet.setChatApiKey(s.deepseekKey)
                 pet.setDoubaoApiKey(s.doubaoKey)
+                pet.setBreezeApiKey(s.breezeKey)
                 pet.setDoubaoResourceId(s.resourceId)
                 pet.setDoubaoVoiceId(s.voiceId)
             }

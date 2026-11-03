@@ -2,7 +2,7 @@ package com.dshpet.android.voice.memory
 
 import android.content.Context
 import android.util.Log
-import com.dshpet.android.api.ChatStream
+import com.dshpet.android.api.ChatApi
 import kotlinx.coroutines.flow.collect
 import org.json.JSONArray
 
@@ -69,8 +69,8 @@ class MemoryCurator(
                 "| 发生$when_ | 地点$where_ | 应用$app_ | ${m.text}"
         }
         val messages = listOf(
-            ChatStream.Msg("system", PROMPT),
-            ChatStream.Msg("user", "现有记忆：\n$list"),
+            ChatApi.Msg("system", PROMPT),
+            ChatApi.Msg("user", "现有记忆：\n$list"),
         )
         Log.i(TAG, "plan: asking model about ${items.size} items (sent ${minOf(items.size, MAX_SEND)})")
         val sb = StringBuilder()

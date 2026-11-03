@@ -28,10 +28,10 @@ class BreezeTtsProvider(private val cfg: TtsConfig) : TtsProvider {
     override val id: String get() = TtsEngines.ID_BREEZE
     override val displayName: String get() = "Breeze Blue"
 
-    override fun isConfigured(): Boolean = cfg.apiKey.isNotBlank()
+    override fun isConfigured(): Boolean = com.dshpet.android.data.KeyFactory.current().hasBreeze
 
     /** HTTP 与错误映射已重构进 api/TtsApi；这里只剩"这家服务商怎么编解码"的委托 */
-    private val api = com.dshpet.android.api.TtsApi(com.dshpet.android.api.BreezeCodec())
+    private val api = com.dshpet.android.api.TtsApi(com.dshpet.android.api.BreezeApi)
 
     override suspend fun synthesize(
         text: String,

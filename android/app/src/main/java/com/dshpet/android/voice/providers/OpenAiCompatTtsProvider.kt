@@ -1,6 +1,6 @@
 package com.dshpet.android.voice.providers
 
-import com.dshpet.android.api.OpenAiCodec
+import com.dshpet.android.api.OpenAiApi
 import com.dshpet.android.api.TtsApi
 import com.dshpet.android.voice.AudioChunk
 import com.dshpet.android.voice.TtsConfig
@@ -18,7 +18,7 @@ import com.dshpet.android.voice.VoiceProfile
  *   - openedai-speech、各种中转站
  *   - MiniMax 等提供兼容层的平台
  *
- * 报文（URL / 头 / body / 流切法）全部在 [OpenAiCodec]，本类只剩三件事：
+ * 报文在 [OpenAiApi]，HTTP 在 [TtsApi]。本类只剩三件事：
  * 配没配好、把调用转给 [TtsApi]、把 cancel 转给在途 Call。
  * **这里不该再出现 `Request.Builder` / `newCall` / `Bearer`。**
  */
@@ -30,7 +30,7 @@ class OpenAiCompatTtsProvider(private val cfg: TtsConfig) : TtsProvider {
     override fun isConfigured(): Boolean = cfg.baseUrl.isNotBlank()
 
     /** HTTP 与错误映射已重构进 api/TtsApi；这里只剩"这家服务商怎么编解码"的委托 */
-    private val api = TtsApi(OpenAiCodec())
+    private val api = TtsApi(OpenAiApi())
 
     override suspend fun synthesize(text: String, voice: VoiceProfile, onChunk: (AudioChunk) -> Unit) {
         if (!isConfigured()) throw TtsError.NotConfigured()

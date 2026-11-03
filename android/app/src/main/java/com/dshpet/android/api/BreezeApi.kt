@@ -1,5 +1,7 @@
 package com.dshpet.android.api
 
+import com.dshpet.android.voice.TtsConfig
+import com.dshpet.android.voice.VoiceProfile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Request
@@ -7,21 +9,22 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * **Breeze Blue 接口**：域名 + 鉴权（`xi-api-key`）都关在这里。
- *
- * 现状：`voice/BreezeVoices` 里还留着一份 URL 与请求拼装，属于历史债；
- * 本类成为唯一出口后，`BreezeVoices` 只负责"名字缓存"，不再碰网络。
+ * Breeze 厂家接口：音色列表 + TTS 报文。合成 HTTP 由 [TtsApi] 发出。
  */
-object BreezeApi {
+object BreezeApi : TtsCodec {
 
     private const val BASE = "https://api.breeze.blue"
+    const val HEADER_KEY = "xi-api-key"
 
-    /** `GET /v1/voices` → (voiceId, name) */
-    suspend fun listVoices(apiKey: String, language: String = "zh"): List<Pair<String, String>> =
+    override val id: String = "breeze"
+
+    suspend fun listVoices(language: String = "zh"): List<Pair<String, String>> =
         withContext(Dispatchers.IO) {
+            val apiKey = com.dshpet.android.data.KeyFactory.current().breeze
+            if (apiKey.isBlank()) error("未配置 Breeze Key")
             val req = Request.Builder()
                 .url("$BASE/v1/voices?language_code=$language&page_size=100")
-                .addHeader("xi-api-key", apiKey)
+                .addHeader(HEADER_KEY, apiKey)
                 .get()
                 .build()
             ApiClient.read(30).newCall(req).execute().use { resp ->
@@ -36,10 +39,25 @@ object BreezeApi {
             }
         }
 
-    /** `POST /v1/text-to-speech/{voiceId}/stream` 的地址（由 TTS 接口层使用） */
     fun ttsStreamUrl(voiceId: String, format: String = "pcm"): String =
         "$BASE/v1/text-to-speech/$voiceId/stream?output_format=$format"
 
-    /** 鉴权头名（TTS 接口层复用） */
-    const val HEADER_KEY = "xi-api-key"
+    override fun request(text: String, voice: VoiceProfile, cfg: TtsConfig): TtsHttpSpec {
+        val voiceId = voice.voiceId.ifBlank { throw com.dshpet.android.voice.TtsError.Protocol("Breeze 音色 ID 为空") }
+        val format = (cfg.extra["format"] ?: "pcm").lowercase()
+        val body = JSONObject()
+            .put("text", text)
+            .put("model_id", cfg.extra["model_id"] ?: "breeze-tts-2")
+            .apply { cfg.extra["language_code"]?.takeIf { it.isNotBlank() }?.let { put("language_code", it) } }
+            .toString()
+        return TtsHttpSpec(
+            url = ttsStreamUrl(voiceId, format),
+            headers = emptyMap(),
+            bodyJson = body,
+            stream = true,
+            pcm = format == "pcm",
+        )
+    }
+
+    override fun decodeChunk(bytes: ByteArray): ByteArray? = bytes
 }

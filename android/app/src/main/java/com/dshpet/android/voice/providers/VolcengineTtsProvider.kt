@@ -1,6 +1,6 @@
 package com.dshpet.android.voice.providers
 
-import com.dshpet.android.api.DoubaoCodec
+import com.dshpet.android.api.DoubaoApi
 import com.dshpet.android.api.TtsApi
 import com.dshpet.android.voice.AudioChunk
 import com.dshpet.android.voice.TtsConfig
@@ -14,22 +14,20 @@ import com.dshpet.android.voice.VoiceProfile
  *
  * 文档：https://docs.volcengine.com/docs/DoubaoVoice/HTTPChunkedSSEUnidirectionalStreaming-V3
  *
- * 报文（URL / 头 / body / 逐行解 base64）全部在 [DoubaoCodec]，本类只剩三件事：
- * 配没配好、把调用转给 [TtsApi]、把 cancel 转给在途 Call。
- * **这里不该再出现 `Request.Builder` / `newCall` / `X-Api-Key`。**
- *
- * 可配置项（都走 [TtsConfig.extra]）见 [DoubaoCodec] 的类注释。
+ * 报文在 [DoubaoApi]，HTTP 在 [TtsApi]。本类只剩配没配好、转发 synthesize/cancel。
  */
 class VolcengineTtsProvider(private val cfg: TtsConfig) : TtsProvider {
 
     override val id: String get() = TtsEngines.ID_VOLCENGINE
     override val displayName: String get() = "豆包语音合成 2.0"
 
-    override fun isConfigured(): Boolean =
-        cfg.apiKey.isNotBlank() || (cfg.appId.isNotBlank() && cfg.accessKey.isNotBlank())
+    override fun isConfigured(): Boolean {
+        val keys = com.dshpet.android.data.KeyFactory.current()
+        return keys.hasDoubao || (cfg.appId.isNotBlank() && cfg.accessKey.isNotBlank())
+    }
 
     /** HTTP 与错误映射已重构进 api/TtsApi；这里只剩"这家服务商怎么编解码"的委托 */
-    private val api = TtsApi(DoubaoCodec())
+    private val api = TtsApi(DoubaoApi())
 
     override suspend fun synthesize(text: String, voice: VoiceProfile, onChunk: (AudioChunk) -> Unit) {
         if (!isConfigured()) throw TtsError.NotConfigured()

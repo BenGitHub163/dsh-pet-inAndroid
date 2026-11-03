@@ -29,6 +29,7 @@ class PetApp : Application() {
     }
 
     override fun onCreate() {
+        injectedAppContext = this
         // 提示词仓库：assets/prompts/*.txt（可在 files/prompts/ 覆盖，不用重新编译）
         runCatching { com.dshpet.android.prompt.PromptStore.init(this) }
         // 后台预热配置快照：此后所有请求读内存，不再阻塞主线程
@@ -39,20 +40,22 @@ class PetApp : Application() {
         runCatching {
             kotlinx.coroutines.runBlocking {
                 val c = com.dshpet.android.data.PetConfig.get(this@PetApp)
-                val vs = com.dshpet.android.voice.core.VoiceSettingsStore(this@PetApp)
+                val vs = com.dshpet.android.voice.core.VoiceSettingsStore.get(this@PetApp)
                 val cur = vs.load()
-                val dk = c.chatApiKey(); val bk = c.doubaoApiKey()
+                com.dshpet.android.data.KeyFactory.reload(c, cur)
+                val keys = com.dshpet.android.data.KeyFactory.current()
                 val rid = c.doubaoResourceId(); val vid = c.doubaoVoiceId()
                 vs.save(cur.copy(
-                    deepseekKey = if (dk.isNotBlank()) dk else cur.deepseekKey,
-                    doubaoKey = if (bk.isNotBlank()) bk else cur.doubaoKey,
-                    resourceId = rid, voiceId = vid,
+                    deepseekKey = keys.deepseek,
+                    doubaoKey = keys.doubao,
+                    breezeKey = keys.breeze,
+                    resourceId = if (rid.isNotBlank()) rid else cur.resourceId,
+                    voiceId = if (vid.isNotBlank()) vid else cur.voiceId,
                 ))
             }
         }.onFailure { android.util.Log.w("PetApp", "syncKeys failed: " + it.message) }
 
         super.onCreate()
-        injectedAppContext = this
         AppLog.init(this)
         installCrashHandler()
         AppLog.log("APP", "启动 v${BuildConfig.VERSION_NAME}")

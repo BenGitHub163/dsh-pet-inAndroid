@@ -82,7 +82,6 @@ sealed class TtsError(message: String, cause: Throwable? = null) : Exception(mes
 /** 各 provider 的配置快照（从 PetConfig 读出来后构造） */
 data class TtsConfig(
     val providerId: String,
-    val apiKey: String = "",
     val baseUrl: String = "",
     val path: String = "",
     val resourceId: String = "",

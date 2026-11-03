@@ -37,9 +37,16 @@ class VoiceTestReceiver : BroadcastReceiver() {
         val providerId = intent.getStringExtra("provider") ?: TtsEngines.ID_SYSTEM
         val text = intent.getStringExtra("text") ?: "今天也要认真工作呀。"
         val voiceId = intent.getStringExtra("voiceId") ?: DEFAULT_VOICE
+        val extraKey = intent.getStringExtra("apiKey").orEmpty()
+        if (extraKey.isNotBlank()) {
+            if (providerId == TtsEngines.ID_BREEZE) {
+                com.dshpet.android.data.KeyFactory.publish(breeze = extraKey)
+            } else {
+                com.dshpet.android.data.KeyFactory.publish(doubao = extraKey)
+            }
+        }
         val cfg = TtsConfig(
             providerId = providerId,
-            apiKey = intent.getStringExtra("apiKey").orEmpty(),
             baseUrl = intent.getStringExtra("baseUrl").orEmpty(),
             path = intent.getStringExtra("path").orEmpty(),
             resourceId = intent.getStringExtra("resourceId").orEmpty(),

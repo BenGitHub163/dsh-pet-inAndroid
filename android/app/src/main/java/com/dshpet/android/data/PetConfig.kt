@@ -49,7 +49,6 @@ class PetConfig(private val ctx: Context) {
 
         // ---- 内存快照：界面/请求线程零阻塞读取，避免主线程 runBlocking DataStore ----
         @Volatile var snapReady = false
-        @Volatile var snapChatKey = ""
         @Volatile var snapBaseUrl = ""
     @Volatile var snapChatPath = ""
         @Volatile var snapModel = ""
@@ -65,7 +64,10 @@ class PetConfig(private val ctx: Context) {
     /** 后台调用：把常用配置一次性读进内存快照 */
     suspend fun refreshSnapshot(ctx: Context) {
         val c = PetConfig(ctx)
-        snapChatKey = c.chatApiKey()
+        runCatching {
+            KeyFactory.reload(c, com.dshpet.android.voice.core.VoiceSettingsStore.get(ctx).load())
+        }
+        val keys = KeyFactory.current()
         snapBaseUrl = c.chatBaseUrl()
         snapChatPath = c.chatPath()
         snapModel = c.chatModel()
@@ -73,7 +75,7 @@ class PetConfig(private val ctx: Context) {
         snapMaxTokens = c.chatMaxTokens()
         snapTimeout = c.chatTimeout()
         snapVerifySsl = c.chatVerifySsl()
-        snapDoubaoKey = c.doubaoApiKey()
+        snapDoubaoKey = keys.doubao
         snapDoubaoRid = c.doubaoResourceId()
         snapDoubaoVoice = c.doubaoVoiceId()
         snapReady = true
@@ -165,9 +167,10 @@ class PetConfig(private val ctx: Context) {
         private val K_CHAT_PATH = stringPreferencesKey("chat_chat_path")
         private val K_CHAT_MODEL = stringPreferencesKey("chat_model")
         private val K_CHAT_API_KEY = stringPreferencesKey("chat_api_key")
-    val K_DOUBAO_API_KEY = stringPreferencesKey("doubao_api_key")
-    val K_DOUBAO_RESOURCE_ID = stringPreferencesKey("doubao_resource_id")
-    val K_DOUBAO_VOICE_ID = stringPreferencesKey("doubao_voice_id")
+        private val K_DOUBAO_API_KEY = stringPreferencesKey("doubao_api_key")
+        private val K_DOUBAO_RESOURCE_ID = stringPreferencesKey("doubao_resource_id")
+        private val K_DOUBAO_VOICE_ID = stringPreferencesKey("doubao_voice_id")
+        private val K_BREEZE_API_KEY = stringPreferencesKey("breeze_api_key")
         private val K_CHAT_TEMPERATURE = doublePreferencesKey("chat_temperature")
         private val K_CHAT_MAX_TOKENS = intPreferencesKey("chat_max_tokens")
         private val K_CHAT_TIMEOUT = intPreferencesKey("chat_timeout")
@@ -265,15 +268,16 @@ class PetConfig(private val ctx: Context) {
     /** 写入后立即刷新内存快照（不用等下次启动） */
     suspend fun refreshSnap() {
         runCatching {
-            snapChatKey = chatApiKey()
+            KeyFactory.reload(this)
+            val keys = KeyFactory.current()
             snapBaseUrl = chatBaseUrl()
-        snapChatPath = chatPath()
+            snapChatPath = chatPath()
             snapModel = chatModel()
             snapTemperature = chatTemperature()
             snapMaxTokens = chatMaxTokens()
             snapTimeout = chatTimeout()
             snapVerifySsl = chatVerifySsl()
-            snapDoubaoKey = doubaoApiKey()
+            snapDoubaoKey = keys.doubao
             snapDoubaoRid = doubaoResourceId()
             snapDoubaoVoice = doubaoVoiceId()
             snapReady = true
@@ -288,11 +292,14 @@ class PetConfig(private val ctx: Context) {
     /** 只读数据库里的豆包 key（不回退），给 [KeyFactory] 用 */
     suspend fun doubaoApiKeyRaw() = read(K_DOUBAO_API_KEY, "")
 
-    /** 对话 key（数据库优先，其次构建期内置；存了空串也回退到内置值） */
-    suspend fun chatApiKey() = chatApiKeyRaw().ifBlank { KeyFactory.defaults().deepseek }
+    /** 只读数据库里的 Breeze key（不回退），给 [KeyFactory] 用 */
+    suspend fun breezeApiKeyRaw() = read(K_BREEZE_API_KEY, "")
 
-    /** 豆包语音 key（同上） */
-    suspend fun doubaoApiKey() = doubaoApiKeyRaw().ifBlank { KeyFactory.defaults().doubao }
+    /** 对话 key：走 [KeyFactory] 快照（保存后会 reload）。 */
+    suspend fun chatApiKey() = KeyFactory.current().deepseek
+
+    /** 豆包语音 key：走 [KeyFactory] 快照。 */
+    suspend fun doubaoApiKey() = KeyFactory.current().doubao
     // 音色 / 资源 id 的默认值必须留空：语音层的权威来源是这里的 DataStore，
     // "没设置过"时要能回退到 VoiceSettings 里的用户选择，否则默认值会盖掉用户选的音色。
     suspend fun doubaoResourceId() = read(K_DOUBAO_RESOURCE_ID, "")
@@ -398,6 +405,7 @@ class PetConfig(private val ctx: Context) {
     suspend fun setChatModel(v: String) = set("chat_model", v).also { refreshSnap() }
     suspend fun setChatApiKey(v: String) = set("chat_api_key", v).also { refreshSnap() }
     suspend fun setDoubaoApiKey(v: String) = set("doubao_api_key", v).also { refreshSnap() }
+    suspend fun setBreezeApiKey(v: String) = set("breeze_api_key", v).also { refreshSnap() }
     suspend fun setDoubaoResourceId(v: String) = set("doubao_resource_id", v).also { refreshSnap() }
     suspend fun setDoubaoVoiceId(v: String) = set("doubao_voice_id", v).also { refreshSnap() }
     suspend fun setChatTemperature(v: Double) = set("chat_temperature", v).also { refreshSnap() }

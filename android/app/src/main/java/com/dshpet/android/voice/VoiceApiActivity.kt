@@ -291,7 +291,7 @@ private fun DoubaoPage(
         Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedButton(
                 onClick = {
-                    if (s.doubaoKey.isBlank()) {
+                    if (!com.dshpet.android.data.KeyFactory.current().hasDoubao) {
                         msg = "先填 Key"
                         return@OutlinedButton
                     }
@@ -353,11 +353,11 @@ private fun BreezePage(
         Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedButton(
                 onClick = {
-                    if (s.breezeKey.isBlank()) { msg = "先填 Key"; return@OutlinedButton }
+                    if (!com.dshpet.android.data.KeyFactory.current().hasBreeze) { msg = "先填 Key"; return@OutlinedButton }
                     loading = true; msg = "拉取中…"
                     scope.launch {
                         val r = runCatching {
-                            BreezeVoices.fetch(ctx, s.breezeKey).map { Triple(it.first, it.second, "") }
+                            BreezeVoices.fetch(ctx).map { Triple(it.first, it.second, "") }
                         }
                         loading = false
                         r.onSuccess { got ->
@@ -389,10 +389,10 @@ private fun BreezePage(
                             if (v.third.isNotBlank()) Text(v.third, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         TextButton(onClick = {
-                            if (s.breezeKey.isBlank()) { msg = "先填 Key"; return@TextButton }
+                            if (!com.dshpet.android.data.KeyFactory.current().hasBreeze) { msg = "先填 Key"; return@TextButton }
                             msg = "试听中…"
                             scope.launch {
-                                val r = runCatching { TtsPreview.play(breezePreviewCfg(s.breezeKey), VoiceProfile(voiceId = v.first)) }
+                                val r = runCatching { TtsPreview.play(breezePreviewCfg(), VoiceProfile(voiceId = v.first)) }
                                 msg = r.fold({ "播放完成" }, { e -> "失败：${e.message}" })
                             }
                         }) { Text("试听", fontSize = 11.sp) }
@@ -490,7 +490,6 @@ private fun loadDoubaoVoices(ctx: android.content.Context): List<Triple<String, 
 /** 豆包试听的配置：固定 pcm（延迟最低），其余取当前设置 */
 private fun doubaoPreviewCfg(s: VoiceSettings): TtsConfig = TtsConfig(
     providerId = TtsEngines.ID_VOLCENGINE,
-    apiKey = s.doubaoKey,
     resourceId = s.resourceId,
     extra = mapOf(
         "format" to "pcm",
@@ -509,9 +508,8 @@ private fun doubaoPreviewVoice(s: VoiceSettings): VoiceProfile = VoiceProfile(
 )
 
 /** Breeze 试听的配置：固定 pcm / 24k / breeze-tts-2（与说话时一致） */
-private fun breezePreviewCfg(key: String): TtsConfig = TtsConfig(
+private fun breezePreviewCfg(): TtsConfig = TtsConfig(
     providerId = TtsEngines.ID_BREEZE,
-    apiKey = key,
     extra = mapOf(
         "format" to "pcm",
         "sample_rate" to "24000",
@@ -522,7 +520,7 @@ private fun breezePreviewCfg(key: String): TtsConfig = TtsConfig(
 /**
  * **试听**：唯一的实现，两家只是配置不同。
  *
- * 报文交给 `TtsCodec`、HTTP 交给 `TtsApi`，这里只留"PCM 直接写 AudioTrack"这一件事 ——
+ * 报文交给各家 *Api、HTTP 交给 `TtsApi`，这里只留"PCM 直接写 AudioTrack"这一件事 ——
  * 原来 DoubaoPreview / BreezePreview 各抄了一份 Request.Builder + 读流 + 建轨。
  */
 private object TtsPreview {

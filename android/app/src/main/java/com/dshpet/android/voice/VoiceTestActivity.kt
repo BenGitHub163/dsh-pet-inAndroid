@@ -351,8 +351,9 @@ class VoiceTestActivity : Activity() {
     private fun refreshBreezeVoices() {
         val key = breezeKeyBox.text.toString().trim()
         if (key.isBlank()) return ui("先填 Breeze Key")
+        com.dshpet.android.data.KeyFactory.publish(breeze = key)
         scope.launch {
-            runCatching { com.dshpet.android.voice.BreezeVoices.fetch(applicationContext, key) }
+            runCatching { com.dshpet.android.voice.BreezeVoices.fetch(applicationContext) }
                 .onSuccess { runOnUiThread { renderBreezeVoices(); ui("已刷新 " + it.size + " 个音色") } }
                 .onFailure { runOnUiThread { ui("拉取失败：" + (it.message ?: "网络错误")) } }
         }
@@ -365,9 +366,13 @@ class VoiceTestActivity : Activity() {
         val voice = if (isBreeze) null else (selected ?: return ui("先选一个音色"))
         val breezeVoiceId = breezeVoices.getOrNull(breezeVoiceBox.selectedItemPosition)?.first.orEmpty()
         if (isBreeze && breezeVoiceId.isBlank()) return ui("先填 Breeze 音色 ID（voc_ 开头）")
+        if (isBreeze) {
+            com.dshpet.android.data.KeyFactory.publish(breeze = breezeKeyBox.text.toString().trim())
+        } else {
+            com.dshpet.android.data.KeyFactory.publish(doubao = keyBox.text.toString().trim())
+        }
         val cfg = if (isBreeze) TtsConfig(
             providerId = TtsEngines.ID_BREEZE,
-            apiKey = breezeKeyBox.text.toString().trim(),
             extra = mapOf(
                 "format" to "pcm",
                 "sample_rate" to "24000",
@@ -375,7 +380,6 @@ class VoiceTestActivity : Activity() {
             ),
         ) else TtsConfig(
             providerId = providerId,
-            apiKey = keyBox.text.toString().trim(),
             resourceId = resourceIds[ridSpinner.selectedItemPosition],
             extra = mapOf(
                 "format" to formats[formatSpinner.selectedItemPosition],

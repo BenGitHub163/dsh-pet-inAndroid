@@ -1,11 +1,7 @@
 package com.dshpet.android.api
 
 import android.content.Context
-import com.dshpet.android.api.ChatStream
 import com.dshpet.android.data.PetConfig
-import com.dshpet.android.voice.TtsConfig
-import com.dshpet.android.voice.VoiceProfile
-import com.dshpet.android.voice.providers.VolcengineTtsProvider
 
 /**
  * 外部 API 的唯一入口。
@@ -14,7 +10,7 @@ import com.dshpet.android.voice.providers.VolcengineTtsProvider
  * | | [ApiFactory] | [ApiTargets] |
  * |---|---|---|
  * | 谁用 | 对话 / 语音 / 自言自语等**业务代码** | 设置页「工具」面板的**界面** |
- * | 产出 | [ChatStream.ChatCfg] 这类**拿来就能用**的配置对象 | [ApiTarget] 这类**可渲染的行**（名字 / Key 掩码 / 测试动作） |
+ * | 产出 | [ChatApi] / TTS / Vision 等**能力对象** | [ApiTarget] 这类**可渲染的行**（名字 / Key 掩码 / 测试动作） |
  * | 依赖 | 只读配置，纯函数、非挂起 | 还要真的发请求（测试连接、查余额），是 `suspend` |
  *
  * 为什么**不**合成一个类：把"网络测试"和"业务构造"塞进同一个对象后，
@@ -23,7 +19,7 @@ import com.dshpet.android.voice.providers.VolcengineTtsProvider
  */
 object ApiFactory {
 
-    /** 对话接口（能力出口）：key / 端点 / 模型都在 ChatApi 内部解决 */
+    /** 对话能力：业务入口。HTTP 在 [DeepseekApi]。 */
     @com.dshpet.android.util.TraceLog(module = "API", level = "D")
     fun chat(ctx: Context): ChatApi = ChatApi(ctx.applicationContext)
 
@@ -57,18 +53,12 @@ object ApiFactory {
     /** 更新检查 */
     fun update(): UpdateApi = UpdateApi
 
-    /**
-     * DeepSeek 余额查询。
-     * @param verifySsl 自签名网关时传 false
-     */
+    /** DeepSeek 余额。Key 由 [DeepseekApi] 自己从 KeyFactory 取。 */
     suspend fun balance(
         baseUrl: String,
-        apiKey: String,
         verifySsl: Boolean = true,
         timeoutSec: Int = 15,
-    ): Result<String> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-        com.dshpet.android.pet.Balance.fetch(baseUrl, apiKey, verifySsl, timeoutSec)
-    }
+    ): Result<String> = DeepseekApi.balance(baseUrl, verifySsl, timeoutSec)
 }
 
 /** 一个外部 API 的描述：名字 + Key 摘要 + 「测试连接」动作（可选附加动作） */
@@ -90,62 +80,29 @@ data class ApiTarget(
 object ApiTargets {
 
     suspend fun build(cfg: PetConfig, appCtx: android.content.Context): List<ApiTarget> {
-        val dsKey = cfg.chatApiKey()
-        val dbKey = cfg.doubaoApiKey()
-        val voice = cfg.doubaoVoiceId()
-        val rid = cfg.doubaoResourceId()
+        val keys = com.dshpet.android.data.KeyFactory.current()
 
         val deepseek = ApiTarget(
             id = "deepseek",
             name = "DeepSeek 对话",
-            keyHint = mask(dsKey),
-            test = {
-                val chat = ChatStream.ChatCfg(
-                    baseUrl = cfg.chatBaseUrl(),
-                    chatPath = cfg.chatPath(),
-                    model = cfg.chatModel(),
-                    apiKey = dsKey,
-                    temperature = cfg.chatTemperature(),
-                    maxTokens = cfg.chatMaxTokens(),
-                    timeoutSec = cfg.chatTimeout(),
-                    verifySsl = cfg.chatVerifySsl(),
-                )
-                runCatching {
-                    kotlinx.coroutines.suspendCancellableCoroutine<String> { cont ->
-                        ChatStream.testConnection(chat) { r ->
-                            if (cont.isActive) {
-                                r.fold(
-                                    { ok -> cont.resumeWith(Result.success(ok)) },
-                                    { e -> cont.resumeWith(Result.failure(e)) },
-                                )
-                            }
-                        }
-                    }
-                }
-            },
-            // 余额查询跟「测试」同一行（以前是工具区里一个独立按钮，看不出到底查的是谁）
+            keyHint = mask(keys.deepseek),
+            test = { ChatApi(appCtx).test() },
             extraLabel = "余额",
             extra = {
-                val key = cfg.chatApiKey()
-                if (key.isBlank()) {
+                if (!com.dshpet.android.data.KeyFactory.current().hasDeepseek) {
                     Result.failure(IllegalStateException("未配置 API Key"))
                 } else {
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        com.dshpet.android.api.ApiFactory.balance(
-                            baseUrl = cfg.chatBaseUrl(),
-                            apiKey = key,
-                            verifySsl = cfg.chatVerifySsl(),
-                            timeoutSec = cfg.chatTimeout(),
-                        )
-                    }.map { "DeepSeek 账户余额：$it" }
+                    ApiFactory.balance(
+                        baseUrl = cfg.chatBaseUrl(),
+                        verifySsl = cfg.chatVerifySsl(),
+                        timeoutSec = cfg.chatTimeout(),
+                    ).map { "DeepSeek 账户余额：$it" }
                 }
             },
         )
 
-        // 语音合成按「语音 API」页里当前选的服务商来测（豆包 / Breeze / 系统），
-        // 不再写死豆包，也不再读 PetConfig 里的旧 key。
         val vs = com.dshpet.android.voice.core.VoiceSettingsStore.get(appCtx).load()
-        val ttsKey = if (vs.provider == com.dshpet.android.voice.core.VoiceSettings.PROVIDER_BREEZE) vs.breezeKey else vs.doubaoKey
+        val ttsKey = if (vs.provider == com.dshpet.android.voice.core.VoiceSettings.PROVIDER_BREEZE) keys.breeze else keys.doubao
         val tts = ApiTarget(
             id = "tts",
             name = "语音合成（" + com.dshpet.android.voice.core.VoiceSettings.providerName(vs.provider) + "）",

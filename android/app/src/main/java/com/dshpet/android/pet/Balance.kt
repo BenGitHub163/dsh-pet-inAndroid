@@ -66,11 +66,10 @@ object Balance {
         return "余额时段：" + tier + "（" + waitText + "后切换）"
     }
 
-    /** HTTP 与解析已重构进 api/BalanceApi；这里只保留"余额文案/档位"这类纯逻辑 */
+    /** HTTP 在 [com.dshpet.android.api.DeepseekApi]；这里只保留档位/时段文案 */
     suspend fun fetch(
         baseUrl: String,
-        apiKey: String,
         verifySsl: Boolean = true,
         timeoutSec: Int = 15,
-    ): Result<String> = com.dshpet.android.api.BalanceApi.fetch(baseUrl, apiKey, verifySsl, timeoutSec)
+    ): Result<String> = com.dshpet.android.api.DeepseekApi.balance(baseUrl, verifySsl, timeoutSec)
 }

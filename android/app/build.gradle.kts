@@ -185,7 +185,7 @@ val checkApiHosts by tasks.registering {
             )
         }
         // ---- 第二条规则（失败模式）：HTTP 调用只允许在 api/ 内 ----
-        // 已切失败：TTS 三个 provider 走 TtsCodec + api/TtsApi，对话走 api/ChatStream。
+        // 已切失败：TTS 走各家 *Api + TtsApi，对话走 ChatApi。
         // `\b` 不能省：SpeechPlayer 里的 `AudioFocusRequest.Builder(...)` 是 AudioTrack 的焦点请求，
         // 不是 HTTP，去掉词边界就变成永久误报。
         val httpMarker = Regex("""\bRequest\.Builder\(|\.newCall\(|toRequestBody\(""")
@@ -202,8 +202,8 @@ val checkApiHosts by tasks.registering {
                     appendLine("发现 api/ 之外的 HTTP 调用（${httpOffenders.size} 个文件）：")
                     httpOffenders.forEach { appendLine("  - $it") }
                     appendLine("规则：请求组装与发送只写在 api/ 下。")
-                    appendLine("新增服务商：写 api/XxxCodec.kt（只拼报文/解流），由 api/TtsApi 发；")
-                    appendLine("对话类接口写进 api/ChatStream.kt，不要在业务层 newCall。")
+                    appendLine("新增服务商：写 api/XxxApi.kt（报文+域名），由 TtsApi 发 HTTP；")
+                    appendLine("对话类接口写进 api/ChatApi.kt，不要在业务层 newCall。")
                 },
             )
         }

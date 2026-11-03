@@ -2,7 +2,7 @@ package com.dshpet.android.voice.core
 
 import android.content.Context
 import com.dshpet.android.api.ApiFactory
-import com.dshpet.android.api.ChatStream
+import com.dshpet.android.api.ChatApi
 import com.dshpet.android.util.AppLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
@@ -38,8 +38,8 @@ object SelfTalkAi {
         runCatching {
             val text = ApiFactory.chat(ctx).complete(
                 listOf(
-                    ChatStream.Msg("system", SYSTEM),
-                    ChatStream.Msg("user", "（现在没人说话，你小声嘀咕一句）"),
+                    ChatApi.Msg("system", SYSTEM),
+                    ChatApi.Msg("user", "（现在没人说话，你小声嘀咕一句）"),
                 ),
                 maxTokens = 64,
             )

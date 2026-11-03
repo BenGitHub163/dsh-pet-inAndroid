@@ -206,7 +206,7 @@ interface ToolContext {
 /**
  * 对模型说话的"一轮"。
  *
- * 与 `ChatStream.Msg` 的关系：`Msg` 是**线上格式**（字段名照抄 API），[ChatTurn] 是**编排层**
+ * 与 `ChatApi.Msg` 的关系：`Msg` 是**线上格式**（字段名照抄 API），[ChatTurn] 是**编排层**
  * 的表示（Assistant 可以直接持有 `List<ToolCall>`）。两者用 [toJson] 转换，别在编排层拼 JSON。
  */
 sealed interface ChatTurn {

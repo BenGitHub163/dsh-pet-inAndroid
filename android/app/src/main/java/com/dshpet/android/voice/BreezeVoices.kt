@@ -1,9 +1,6 @@
 package com.dshpet.android.voice
 
 import android.content.Context
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -19,8 +16,6 @@ object BreezeVoices {
 
     private const val PREF = "breeze_voices"
     private const val KEY_LIST = "list_json"
-
-private val client = com.dshpet.android.api.ApiClient.read(30)
 
     /** 缓存里的音色（id 在前，名字在后） */
     fun cached(ctx: Context): List<Pair<String, String>> {
@@ -46,8 +41,8 @@ private val client = com.dshpet.android.api.ApiClient.read(30)
      * 失败时抛出，调用方决定是否用缓存兜底。
      */
     /** 从服务端拉列表并写缓存（网络在 api/BreezeApi，本类只做缓存） */
-    suspend fun fetch(ctx: Context, apiKey: String, language: String = "zh"): List<Pair<String, String>> {
-        val list = com.dshpet.android.api.BreezeApi.listVoices(apiKey, language)
+    suspend fun fetch(ctx: Context, language: String = "zh"): List<Pair<String, String>> {
+        val list = com.dshpet.android.api.BreezeApi.listVoices(language)
         saveCache(ctx, list)
         return list
     }

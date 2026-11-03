@@ -1,33 +1,21 @@
 package com.dshpet.android.data
 
 import com.dshpet.android.BuildConfig
+import com.dshpet.android.voice.core.VoiceSettings
 
 /**
  * **Key 工厂**：全 App 取 API Key 的唯一入口。
  *
- * 三层优先级（从高到低）：
- *  1. **数据库**（DataStore）：用户在设置页填的 key —— 朋友装的是"无内置 Key"版本时唯一来源；
- *  2. **构建期配置文件**：`android/keys.properties`（不进版本库）→ Gradle 注入 [BuildConfig]；
- *  3. **空串**：没有任何 key，调用方自己提示用户去填。
+ * 谁负责什么：
+ *  - **制造 / 读取**：只经过本类。[api/] 自己调 [current]，业务代码**不要把 key 当参数传入接口**；
+ *  - **落盘**：三份 key 都写 [PetConfig]（DataStore）；旧版 Breeze 可能还在 VoiceSettings prefs，[reload] 会迁过来。
  *
- * 为什么不直接把 `BuildConfig.XXX` 散落到各处：
- *  - key 的"有没有配好"是个业务判断（要不要提示、要不要降级到离线话术），
- *    散落各处就会每处都要写一遍 `ifBlank { … }`，很容易漏；
- *  - 将来加第三个 key（比如另一个 TTS/视觉服务）时，只改这一个文件 + 配置文件；
- *  - 送人版（`-Pdsh.noKey`）把所有默认值都变成空串，**代码一行不用改**。
- *
- * 用法：
- * ```
- * val keys = KeyFactory.resolve(cfg)          // 需要挂起（读 DataStore）
- * keys.deepseek.usable                        // 有没有可用 key
- * KeyFactory.defaults().deepseek              // 只要构建期内置值（同步）
- * ```
+ * 优先级（从高到低）：用户填写 → 构建期 `keys.properties` → 空串。
  */
 object KeyFactory {
 
     /**
-     * 一组 key。用 `value class`/`data class` 包起来，避免到处传 `String` 时传错顺序
-     * （deepseek 和 doubao 都是长串，混了很难查）。
+     * 一组 key。用 data class 包起来，避免到处传 `String` 时把 deepseek / doubao 弄反。
      */
     data class Keys(
         /** DeepSeek 对话（`sk-…`） */
@@ -42,14 +30,14 @@ object KeyFactory {
         val hasDeepseek: Boolean get() = deepseek.isNotBlank()
         val hasDoubao: Boolean get() = doubao.isNotBlank()
         val hasBreeze: Boolean get() = breeze.isNotBlank()
-        /** 对话能不能用 */
         val chatReady: Boolean get() = hasDeepseek
-        /** 语音能不能用（合成 + 对话都要 key） */
-        // 语音只要"有一个能出声的服务商"就算就绪：豆包 或 Breeze（系统 TTS 不需要 key）
         val voiceReady: Boolean get() = hasDeepseek && (hasDoubao || hasBreeze)
     }
 
-    /** 构建期内置值（来自 `keys.properties`；送人版全空）。同步、纯函数。 */
+    @Volatile
+    private var snap: Keys = defaults()
+
+    /** 构建期内置值（来自 `keys.properties`；送人版 `-Pdsh.noKey` 全空）。 */
     fun defaults(): Keys = Keys(
         deepseek = BuildConfig.DEFAULT_DEEPSEEK_KEY,
         doubao = BuildConfig.DEFAULT_DOUBAO_KEY,
@@ -57,32 +45,63 @@ object KeyFactory {
         breeze = BuildConfig.DEFAULT_BREEZE_KEY,
     )
 
-    /** 这份安装包有没有内置对话 key（设置页据此显示"请填 Key"提示） */
+    /** 当前生效的 key。api/ 与「是否配好了」的判断都读这个。 */
+    fun current(): Keys = snap
+
     val hasBuiltInDeepseek: Boolean get() = defaults().hasDeepseek
 
     /**
-     * 数据库优先、内置兜底。
-     *
-     * 注意：用户在设置里**清空**了 key（存成空串）时，这里会回落到内置值 ——
-     * 这是原有的行为（`chatApiKey()` 注释里写过"存了空串也回退"），
-     * 因为"清空"在这个界面上的语义是"恢复默认"，不是"禁用"。
+     * 写入内存快照。空串回落到构建期内置值（设置页「清空」= 恢复默认，不是禁用）。
      */
-    suspend fun resolve(cfg: PetConfig): Keys {
+    fun publish(keys: Keys) {
         val d = defaults()
-        return Keys(
-            deepseek = cfg.chatApiKeyRaw().ifBlank { d.deepseek },
-            doubao = cfg.doubaoApiKeyRaw().ifBlank { d.doubao },
-            doubaoAppId = d.doubaoAppId,
-            breeze = d.breeze,
+        snap = Keys(
+            deepseek = keys.deepseek.ifBlank { d.deepseek },
+            doubao = keys.doubao.ifBlank { d.doubao },
+            doubaoAppId = keys.doubaoAppId.ifBlank { d.doubaoAppId },
+            breeze = keys.breeze.ifBlank { d.breeze },
         )
     }
 
-    /** 只要对话 key（最常用的快捷方法） */
+    fun publish(
+        deepseek: String? = null,
+        doubao: String? = null,
+        doubaoAppId: String? = null,
+        breeze: String? = null,
+    ) {
+        val c = current()
+        publish(
+            Keys(
+                deepseek = deepseek ?: c.deepseek,
+                doubao = doubao ?: c.doubao,
+                doubaoAppId = doubaoAppId ?: c.doubaoAppId,
+                breeze = breeze ?: c.breeze,
+            ),
+        )
+    }
+
+    /**
+     * 从 DataStore 重建快照。[voice] 仅作旧版 prefs 迁移（DataStore 为空时才读）。
+     */
+    suspend fun reload(cfg: PetConfig, voice: VoiceSettings? = null) {
+        val d = defaults()
+        val c = current()
+        publish(
+            Keys(
+                deepseek = cfg.chatApiKeyRaw().ifBlank { voice?.deepseekKey ?: c.deepseek }.ifBlank { d.deepseek },
+                doubao = cfg.doubaoApiKeyRaw().ifBlank { voice?.doubaoKey ?: c.doubao }.ifBlank { d.doubao },
+                doubaoAppId = d.doubaoAppId,
+                breeze = cfg.breezeApiKeyRaw().ifBlank { voice?.breezeKey ?: c.breeze }.ifBlank { d.breeze },
+            ),
+        )
+    }
+
+    suspend fun resolve(cfg: PetConfig): Keys {
+        reload(cfg)
+        return current()
+    }
+
     suspend fun deepseek(cfg: PetConfig): String = resolve(cfg).deepseek
-
-    /** 只要语音 key（豆包） */
     suspend fun doubao(cfg: PetConfig): String = resolve(cfg).doubao
-
-    /** 只要 Breeze key */
     suspend fun breeze(cfg: PetConfig): String = resolve(cfg).breeze
 }

@@ -46,9 +46,9 @@ object TtsEngines {
      * 系统 TTS 没有编解码器，返回 null（它走 Android 的 TextToSpeech，没有报文）。
      */
     fun codec(providerId: String): com.dshpet.android.api.TtsCodec? = when (providerId) {
-        ID_VOLCENGINE -> com.dshpet.android.api.DoubaoCodec()
-        ID_OPENAI -> com.dshpet.android.api.OpenAiCodec()
-        ID_BREEZE -> com.dshpet.android.api.BreezeCodec()
+        ID_VOLCENGINE -> com.dshpet.android.api.DoubaoApi()
+        ID_OPENAI -> com.dshpet.android.api.OpenAiApi()
+        ID_BREEZE -> com.dshpet.android.api.BreezeApi
         else -> null
     }
 

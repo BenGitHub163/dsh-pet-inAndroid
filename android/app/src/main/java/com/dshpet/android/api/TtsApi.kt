@@ -12,13 +12,31 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import java.util.concurrent.atomic.AtomicReference
 
+/** 一次 TTS 请求的线上形态：由各家 *Api 产出，[TtsApi] 负责发出。 */
+data class TtsHttpSpec(
+    val url: String,
+    val headers: Map<String, String>,
+    val bodyJson: String,
+    val stream: Boolean,
+    val lineMode: Boolean = false,
+    val pcm: Boolean = true,
+)
+
 /**
- * **TTS 接口**：唯一发请求的地方。
- *
- * 分工：
- *  - [TtsCodec] 只负责"这家服务商的报文长什么样、流怎么切"；
- *  - 本类负责 URL/头/body 落地、超时、HTTP 状态码 → [TtsError] 映射、取消（cancel 底层 Call）。
- * 于是 provider 不再需要 OkHttpClient，也不该出现域名与鉴权头。
+ * 各家 TTS 服务商的报文协议（拼 body / 切流）。实现类是 [BreezeApi] / [DoubaoApi] / [OpenAiApi]。
+ * 不允许出现 `Request.Builder` / `newCall`；鉴权由 [TtsApi] 从 KeyFactory 注入。
+ */
+interface TtsCodec {
+    val id: String
+    fun request(text: String, voice: VoiceProfile, cfg: TtsConfig): TtsHttpSpec
+    fun onResponseHeaders(headers: Map<String, String>) {}
+    fun decodeLine(line: String): ByteArray? = null
+    fun decodeChunk(bytes: ByteArray): ByteArray? = null
+    fun onStreamEnd() {}
+}
+
+/**
+ * **TTS HTTP**：唯一发合成请求的地方。各家报文走对应 *Api（实现 [TtsCodec]）。
  */
 class TtsApi(private val codec: TtsCodec) {
 
@@ -31,7 +49,7 @@ class TtsApi(private val codec: TtsCodec) {
         onChunk: (AudioChunk) -> Unit,
     ) = withContext(Dispatchers.IO) {
         if (text.isBlank()) return@withContext
-        val spec = codec.request(text, voice, cfg)
+        val spec = applyAuth(codec.request(text, voice, cfg))
         val body = spec.bodyJson.toRequestBody(JSON)
         val req = Request.Builder()
             .url(spec.url)
@@ -118,6 +136,22 @@ class TtsApi(private val codec: TtsCodec) {
         429 -> TtsError.RateLimited("限流 HTTP 429 $err")
         in 500..599 -> TtsError.Server("服务端错误 $code $err")
         else -> TtsError.Protocol("HTTP $code $err")
+    }
+
+    /** 鉴权头由本类从 KeyFactory 注入，codec 只拼报文、不碰 key。 */
+    private fun applyAuth(spec: TtsHttpSpec): TtsHttpSpec {
+        val keys = com.dshpet.android.data.KeyFactory.current()
+        val auth = when (codec.id) {
+            "breeze" -> keys.breeze.takeIf { it.isNotBlank() }?.let { mapOf(BreezeApi.HEADER_KEY to it) }.orEmpty()
+            "volcengine" -> when {
+                keys.doubao.isNotBlank() -> mapOf(DoubaoApi.HEADER_KEY to keys.doubao)
+                keys.doubaoAppId.isNotBlank() -> mapOf("X-Api-App-Id" to keys.doubaoAppId)
+                else -> emptyMap()
+            }
+            "openai" -> keys.deepseek.takeIf { it.isNotBlank() }?.let { mapOf("Authorization" to "Bearer $it") }.orEmpty()
+            else -> emptyMap()
+        }
+        return if (auth.isEmpty()) spec else spec.copy(headers = spec.headers + auth)
     }
 
     /** 打断：立刻断掉底层连接 */

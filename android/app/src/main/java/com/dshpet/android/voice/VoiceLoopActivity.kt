@@ -458,13 +458,12 @@ class VoiceLoopActivity : Activity() {
 
     /** 拉 Breeze 音色列表（UI 只显示名字，ID 只存在设置里） */
     private fun refreshBreezeVoices() {
-        val key = settings.breezeKey
-        if (key.isBlank()) {
+        if (!com.dshpet.android.data.KeyFactory.current().hasBreeze) {
             android.widget.Toast.makeText(this, "先到「语音 API」里填 Breeze Key", android.widget.Toast.LENGTH_SHORT).show()
             return
         }
         uiScope.launch {
-            runCatching { com.dshpet.android.voice.BreezeVoices.fetch(applicationContext, key) }
+            runCatching { com.dshpet.android.voice.BreezeVoices.fetch(applicationContext) }
                 .onSuccess { renderVoicePicker() }
                 .onFailure {
                     android.widget.Toast.makeText(
@@ -540,8 +539,10 @@ class VoiceLoopActivity : Activity() {
 
     private fun startLoop() {
         persistVoiceChoice()
-        if (settings.doubaoKey.isBlank() || settings.deepseekKey.isBlank()) {
-            status.text = "❌ 请先填两个 Key"
+        if (!com.dshpet.android.data.KeyFactory.current().hasDeepseek ||
+            !com.dshpet.android.voice.VoiceTtsFactory.isReady(settings)
+        ) {
+            status.text = "❌ 请先填 Key（对话 + 当前语音服务商）"
             return
         }
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {

@@ -3,17 +3,13 @@ package com.dshpet.android.voice.ui
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
-import android.text.InputType
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import android.widget.Button
-import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
-import com.dshpet.android.voice.VoiceLoopActivity
-import com.dshpet.android.voice.VoiceTestActivity
 import com.dshpet.android.voice.core.VoiceSettings
 import com.dshpet.android.voice.core.VoiceSettingsStore
 import kotlinx.coroutines.Job
@@ -40,8 +36,6 @@ class PetSettingsActivity : Activity() {
         kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate
     )
 
-    private lateinit var doubaoKey: EditText
-    private lateinit var deepseekKey: EditText
     private lateinit var ridSpinner: Spinner
     private lateinit var voiceSpinner: Spinner
     private lateinit var privacySpinner: Spinner
