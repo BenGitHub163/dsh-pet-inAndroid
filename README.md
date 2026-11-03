@@ -2,7 +2,7 @@
 
 > **Android 版**：本仓库同时包含桌宠的 Android 原生移植版（Kotlin + Compose MD3，透明悬浮窗桌宠，
 > GitHub Actions 自动构建 APK）。详见 **[android/README-Android.md](android/README-Android.md)**，
-> 最新 APK 见 [Releases](https://github.com/OTFiles/dsh-pet-inAndroid/releases)。
+> 最新 APK 见 [Releases](https://github.com/BenGitHub163/dsh-pet-inAndroid/releases)。
 >
 > **⚠️ 关于 Android 版的移植方式**：`android/` 目录下的全部代码（Kotlin 源码、Gradle 工程、
 > 构建脚本、CI 工作流、素材预处理管线与文档）**均由 AI（Claude / DeepSeek 等大语言模型）

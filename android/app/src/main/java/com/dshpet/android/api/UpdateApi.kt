@@ -14,7 +14,7 @@ import org.json.JSONObject
  */
 object UpdateApi {
 
-    private const val REPO = "OTFiles/dsh-pet-inAndroid"
+    private const val REPO = "BenGitHub163/dsh-pet-inAndroid"
     const val RELEASES_URL = "https://github.com/$REPO/releases"
 
     data class Release(val tag: String, val url: String)

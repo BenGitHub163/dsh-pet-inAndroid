@@ -49,7 +49,7 @@
 
 ## 安装
 
-1. 在 [Releases](https://github.com/OTFiles/dsh-pet-inAndroid/releases) 或 Actions Artifact
+1. 在 [Releases](https://github.com/BenGitHub163/dsh-pet-inAndroid/releases) 或 Actions Artifact
    下载 `dsh-pet-android-*.apk`。
 2. 侧载安装（允许「未知来源」）。
 3. 首次打开 → 设置 → 授权「悬浮窗权限」→ 打开桌宠开关。
