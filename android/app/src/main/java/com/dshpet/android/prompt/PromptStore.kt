@@ -24,7 +24,7 @@ import java.util.concurrent.ConcurrentHashMap
 object PromptStore {
 
     private const val ASSET_DIR = "prompts"
-    private const val TAG = "Dsh_PROMPT"
+    private const val TAG = "PROMPT"
 
     private val cache = ConcurrentHashMap<String, String>()
 

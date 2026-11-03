@@ -25,7 +25,7 @@ import java.util.concurrent.TimeUnit
 object ApiClient {
 
     /** 日志用的 tag，和现有 Dsh_* 体系保持一致 */
-    private const val TAG = "Dsh_API"
+    private const val TAG = "API"
 
     /**
      * 默认客户端：**读超时设 0（不限）**，因为 SSE / 流式 TTS 会在两帧之间停顿很久。
