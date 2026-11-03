@@ -37,9 +37,11 @@ android {
         buildConfigField("String", "DEFAULT_DEEPSEEK_KEY", "\"${key("deepseek")}\"")
         buildConfigField("String", "DEFAULT_DOUBAO_KEY", "\"${key("doubao")}\"")
         buildConfigField("String", "DEFAULT_DOUBAO_APPID", "\"${key("doubao_appid")}\"")
+        buildConfigField("String", "DEFAULT_BREEZE_KEY", "\"${key("breeze")}\"")
         logger.lifecycle(
             "内置 Key：deepseek=" + (if (key("deepseek").isBlank()) "（空）" else "已配置") +
                 " doubao=" + (if (key("doubao").isBlank()) "（空）" else "已配置") +
+                " breeze=" + (if (key("breeze").isBlank()) "（空）" else "已配置") +
                 " 来源=" + (if (keysFile.exists() && !noKey) "keys.properties" else "无"),
         )
     }

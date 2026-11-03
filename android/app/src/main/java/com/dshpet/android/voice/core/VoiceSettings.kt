@@ -17,6 +17,8 @@ import kotlinx.coroutines.launch
  */
 data class VoiceSettings(
     val doubaoKey: String = com.dshpet.android.data.KeyFactory.defaults().doubao,
+    /** Breeze key：默认取构建期内置值（通常为空，由用户在「语音 API」页填） */
+    val breezeKey: String = com.dshpet.android.data.KeyFactory.defaults().breeze,
     val deepseekKey: String = com.dshpet.android.data.KeyFactory.defaults().deepseek,
     val voiceId: String = DEFAULT_VOICE,
     val resourceId: String = "seed-tts-2.0",
@@ -45,8 +47,6 @@ data class VoiceSettings(
     val speechRate: Int = 0,
     /** 音量 -50..100（0 = 正常） */
     val loudnessRate: Int = 0,
-    /** Breeze Blue API Key（brz_ 开头） */
-    val breezeKey: String = "",
     /** Breeze Blue 音色 ID（voc_ 开头） */
     val breezeVoiceId: String = "",
 ) {

@@ -1,40 +1,19 @@
 package com.dshpet.android.pet
 
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import java.util.concurrent.TimeUnit
-
 /**
- * GitHub Release 更新检查（移植 updater.py 的核心判断）。
+ * GitHub Release 更新检查。
+ *
+ * 网络请求已经搬到 [com.dshpet.android.api.UpdateApi]（走全 App 共享的 ApiClient），
+ * 这里只保留**纯逻辑**：版本号比较，以及对外保持原有调用形态，避免改动
+ * MainActivity / PetOverlayService 里的调用点。
  */
 object Updater {
 
-    private const val REPO = "OTFiles/dsh-pet-inAndroid"
-    const val RELEASES_URL = "https://github.com/$REPO/releases"
+    const val RELEASES_URL = com.dshpet.android.api.UpdateApi.RELEASES_URL
 
-    data class Release(val tag: String, val url: String)
-
-    fun latestRelease(timeoutSec: Int = 10): Result<Release> = try {
-        val client = OkHttpClient.Builder()
-            .connectTimeout(timeoutSec.toLong(), TimeUnit.SECONDS)
-            .readTimeout(timeoutSec.toLong(), TimeUnit.SECONDS)
-            .build()
-        val req = Request.Builder()
-            .url("https://api.github.com/repos/$REPO/releases/latest")
-            .header("Accept", "application/vnd.github+json")
-            .build()
-        client.newCall(req).execute().use { resp ->
-            if (!resp.isSuccessful) {
-                return Result.failure(IllegalStateException("无法连接更新服务（HTTP ${resp.code}）"))
-            }
-            val json = org.json.JSONObject(resp.body?.string().orEmpty())
-            val tag = json.optString("tag_name", "")
-            if (tag.isBlank()) return Result.failure(IllegalStateException("无法连接更新服务，请稍后重试"))
-            Result.success(Release(tag, json.optString("html_url", RELEASES_URL)))
-        }
-    } catch (e: Exception) {
-        Result.failure(e)
-    }
+    /** 阻塞查询最新版本（调用方自己放到 IO 线程） */
+    fun latestRelease(timeoutSec: Int = 10): Result<com.dshpet.android.api.UpdateApi.Release> =
+        com.dshpet.android.api.UpdateApi.latestBlocking(timeoutSec.toLong())
 
     /** "v4.1.0" > "4.0.1" 这类 tag 比较 */
     fun isNewer(tag: String, current: String): Boolean {

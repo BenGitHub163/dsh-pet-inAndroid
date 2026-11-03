@@ -36,13 +36,17 @@ object KeyFactory {
         val doubao: String = "",
         /** 豆包 AppID（可选，按 resourceId 模式走时留空） */
         val doubaoAppId: String = "",
+        /** Breeze Blue 语音合成（`brz_…`） */
+        val breeze: String = "",
     ) {
         val hasDeepseek: Boolean get() = deepseek.isNotBlank()
         val hasDoubao: Boolean get() = doubao.isNotBlank()
+        val hasBreeze: Boolean get() = breeze.isNotBlank()
         /** 对话能不能用 */
         val chatReady: Boolean get() = hasDeepseek
         /** 语音能不能用（合成 + 对话都要 key） */
-        val voiceReady: Boolean get() = hasDeepseek && hasDoubao
+        // 语音只要"有一个能出声的服务商"就算就绪：豆包 或 Breeze（系统 TTS 不需要 key）
+        val voiceReady: Boolean get() = hasDeepseek && (hasDoubao || hasBreeze)
     }
 
     /** 构建期内置值（来自 `keys.properties`；送人版全空）。同步、纯函数。 */
@@ -50,6 +54,7 @@ object KeyFactory {
         deepseek = BuildConfig.DEFAULT_DEEPSEEK_KEY,
         doubao = BuildConfig.DEFAULT_DOUBAO_KEY,
         doubaoAppId = BuildConfig.DEFAULT_DOUBAO_APPID,
+        breeze = BuildConfig.DEFAULT_BREEZE_KEY,
     )
 
     /** 这份安装包有没有内置对话 key（设置页据此显示"请填 Key"提示） */
@@ -68,12 +73,16 @@ object KeyFactory {
             deepseek = cfg.chatApiKeyRaw().ifBlank { d.deepseek },
             doubao = cfg.doubaoApiKeyRaw().ifBlank { d.doubao },
             doubaoAppId = d.doubaoAppId,
+            breeze = d.breeze,
         )
     }
 
     /** 只要对话 key（最常用的快捷方法） */
     suspend fun deepseek(cfg: PetConfig): String = resolve(cfg).deepseek
 
-    /** 只要语音 key */
+    /** 只要语音 key（豆包） */
     suspend fun doubao(cfg: PetConfig): String = resolve(cfg).doubao
+
+    /** 只要 Breeze key */
+    suspend fun breeze(cfg: PetConfig): String = resolve(cfg).breeze
 }
