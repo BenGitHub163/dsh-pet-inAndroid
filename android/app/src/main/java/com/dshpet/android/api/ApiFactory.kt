@@ -29,6 +29,50 @@ object ApiFactory {
     /** DeepSeek 对话配置（返回值可直接 `.copy(...)` 微调） */
     fun chat(ctx: Context, maxTokens: Int = 2048): SseClient.ChatCfg =
         ChatConfigFactory.build(ctx, maxTokens)
+
+    // ---------------- 以下是各类外部能力统一入口 ----------------
+    // 约定：业务代码只从 ApiFactory 拿"能直接用的对象"，不自己拼 URL / 不自己 new client。
+
+    /** 当前语音服务商的 TTS（豆包 / Breeze / 系统），已按「语音 API」页配置构造 */
+    fun tts(ctx: Context): com.dshpet.android.voice.TtsProvider =
+        com.dshpet.android.voice.VoiceTtsFactory.createCurrent(ctx)
+
+    /** 指定配置的 TTS（测试台用） */
+    fun tts(ctx: Context, settings: com.dshpet.android.voice.core.VoiceSettings): com.dshpet.android.voice.TtsProvider =
+        com.dshpet.android.voice.VoiceTtsFactory.create(ctx, settings)
+
+    /** 当前语音服务商对应的音色档案 */
+    fun voiceProfile(ctx: Context): com.dshpet.android.voice.VoiceProfile =
+        com.dshpet.android.voice.VoiceTtsFactory.profileFor(
+            com.dshpet.android.voice.core.VoiceSettingsStore.get(ctx).load(),
+        )
+
+    /** 语音识别（系统 SpeechRecognizer 实现） */
+    fun asr(ctx: Context): com.dshpet.android.voice.asr.AsrProvider =
+        com.dshpet.android.voice.asr.SystemAsrProvider(
+            ctx.applicationContext,
+            com.dshpet.android.voice.core.VoiceCapabilities.detect(ctx.applicationContext),
+        )
+
+    /** 视觉观察（"看我一眼"） */
+    fun vision(): com.dshpet.android.voice.vision.VisionClient =
+        com.dshpet.android.voice.vision.VisionClient()
+
+    /** 更新检查 */
+    fun update(): UpdateApi = UpdateApi
+
+    /**
+     * DeepSeek 余额查询。
+     * @param verifySsl 自签名网关时传 false
+     */
+    suspend fun balance(
+        baseUrl: String,
+        apiKey: String,
+        verifySsl: Boolean = true,
+        timeoutSec: Int = 15,
+    ): Result<String> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        com.dshpet.android.pet.Balance.fetch(baseUrl, apiKey, verifySsl, timeoutSec)
+    }
 }
 
 /** 一个外部 API 的描述：名字 + Key 摘要 + 「测试连接」动作（可选附加动作） */
@@ -91,7 +135,7 @@ object ApiTargets {
                     Result.failure(IllegalStateException("未配置 API Key"))
                 } else {
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        com.dshpet.android.pet.Balance.fetch(
+                        com.dshpet.android.api.ApiFactory.balance(
                             baseUrl = cfg.chatBaseUrl(),
                             apiKey = key,
                             verifySsl = cfg.chatVerifySsl(),

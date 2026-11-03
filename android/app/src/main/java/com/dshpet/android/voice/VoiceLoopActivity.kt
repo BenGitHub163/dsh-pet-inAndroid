@@ -62,7 +62,7 @@ class VoiceLoopActivity : Activity() {
     private lateinit var memoryBtn: Button
     private lateinit var privacyBtn: Button
     private lateinit var visionBtn: Button
-    private val visionClient = com.dshpet.android.voice.vision.VisionClient()
+    private val visionClient = com.dshpet.android.api.ApiFactory.vision()
     private val cameraSnap by lazy { com.dshpet.android.voice.vision.CameraSnap(this) }
 
     /** 上一次"语音里让桌宠看一眼"自动拍照的时间（毫秒，elapsedRealtime） */
