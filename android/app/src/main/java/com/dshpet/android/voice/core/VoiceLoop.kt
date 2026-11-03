@@ -261,8 +261,9 @@ class VoiceLoop(context: Context) {
             )
             return
         }
-        if (settings.doubaoKey.isBlank()) {
-            fail("请先填写豆包 TTS Key（否则无法出声）", fatal = true)
+        // 用工厂判断"当前服务商"是否就绪：Breeze 只要 breezeKey+voiceId，不该要求豆包 Key
+        if (!com.dshpet.android.voice.VoiceTtsFactory.isReady(settings)) {
+            fail("语音服务未配置：先到「语音 API」里填好 Key 和音色", fatal = true)
             return
         }
         // 没填 DeepSeek Key 时用本地模拟回复：这样 ASR + TTS 两端可以先验证通
@@ -280,6 +281,8 @@ class VoiceLoop(context: Context) {
             _state.value = VoiceState.Listening()
             val result = asr.listen(
                 locale = settings.locale,
+                // 兜底超时：静音探测在个别 ROM 上不触发时，别让"我在听"干挂 20 秒
+                timeoutMs = 9_000,
                 // 静音探测：1.4s 内一点声音都没有就立刻收一轮（空结果），
                 // 否则系统识别器要 ~4s 才返回 NO_MATCH，"主动开口"就永远快不起来。
                 probeMs = NudgePolicy.PROBE_SILENCE_MS,
@@ -303,7 +306,10 @@ class VoiceLoop(context: Context) {
                 val needMs = NudgePolicy.intervalMs(nudgesSinceSpeech)
                 if (idleMs >= needMs) {
                     if (nudgesSinceSpeech >= NudgePolicy.MAX_NUDGES) {
-                        sayFarewellThenStop(tts, voice)
+                        // 收尾也可能失败（TTS 挂了/没网）：失败也必须退出，否则"我在听"永远挂着
+                        runCatching { sayFarewellThenStop(tts, voice) }
+                            .onFailure { Log.w(TAG, "farewell failed: ${it.message}") }
+                        stop()
                         break
                     }
                     // 用户日志（User_语音）留痕：验证"沉默多久后主动开口"全靠这行
@@ -311,7 +317,9 @@ class VoiceLoop(context: Context) {
                         "语音",
                         "沉默 ${idleMs}ms ≥ 阈值 ${needMs}ms → 第 ${nudgesSinceSpeech + 1} 次主动开口",
                     )
-                    nudge(tts, voice)
+                    // 主动开口失败不能中断循环：计数照加，最终仍会走到收尾
+                    runCatching { nudge(tts, voice) }
+                        .onFailure { Log.w(TAG, "nudge failed: ${it.message}") }
                     nudgesSinceSpeech++
                     lastSpeechAt = System.currentTimeMillis()
                 } else {

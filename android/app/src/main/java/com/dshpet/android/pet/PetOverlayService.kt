@@ -1655,7 +1655,14 @@ open class PetOverlayService : Service() {
         when (s) {
             is com.dshpet.android.voice.core.VoiceState.Listening -> {
                 val p = s.partial.trim()
-                if (p.isNotEmpty()) b.showText(p, durationMs = 1600)
+                if (p.isNotEmpty()) {
+                    // 边说边出字
+                    b.showText(p, durationMs = 1600)
+                } else {
+                    // 一直没听到内容（用户没开口 / 没听清）：给个轻提示，
+                    // 否则"我在听"会静默挂着，看起来像卡死
+                    b.showText("我在听，说句话呀～", durationMs = 2500)
+                }
             }
             is com.dshpet.android.voice.core.VoiceState.Thinking -> {
                 if (s.answer.isBlank()) b.showText("让我想想…", durationMs = 8000)
