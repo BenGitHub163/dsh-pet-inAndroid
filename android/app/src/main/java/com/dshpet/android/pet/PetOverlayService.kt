@@ -1633,12 +1633,44 @@ open class PetOverlayService : Service() {
                         // 一次性把"状态 + 桌宠窗口矩形"传进去：badge 会在 addView **之前**
                         // 用这个矩形算好位置，避免先在左上角闪一下再跳到桌宠头上
                         voiceBadge.update(st, engine.winX, engine.winY, engine.winW, engine.winH)
+                        // 文字同步：听到的（ASR partial）/ 正在说的（当前句）都用气泡实时显示，
+                        // 状态胶囊只负责"听/想/说"，不承载长文本。
+                        showVoiceText(st)
                     }
                 }
             }.onFailure { AppLog.log("VOICE", "状态收集失败：${it.message}") }
         }
     }
 
+    /**
+     * 语音对话的**实时字幕**：听到什么、要说什么，都跟着气泡刷新。
+     *
+     *  - Listening(partial)：跟着 ASR 中间结果走；1.6s 没有新结果自动收起；
+     *  - Thinking：显示"让我想想…"（已经有部分回复文本时就不覆盖）；
+     *  - Speaking(current)：显示当前正在念的这句，停留时长按字数估算（中文约 5 字/秒）；
+     *  - Idle / Failed：收起字幕（失败原因由状态胶囊显示）。
+     */
+    private fun showVoiceText(s: com.dshpet.android.voice.core.VoiceState) {
+        val b = bubble ?: return
+        when (s) {
+            is com.dshpet.android.voice.core.VoiceState.Listening -> {
+                val p = s.partial.trim()
+                if (p.isNotEmpty()) b.showText(p, durationMs = 1600)
+            }
+            is com.dshpet.android.voice.core.VoiceState.Thinking -> {
+                if (s.answer.isBlank()) b.showText("让我想想…", durationMs = 8000)
+            }
+            is com.dshpet.android.voice.core.VoiceState.Speaking -> {
+                val cur = s.current.trim()
+                if (cur.isNotEmpty()) {
+                    val dur = (cur.length * 200L).coerceIn(1200L, 12000L)
+                    b.showText(cur, durationMs = dur)
+                }
+            }
+            is com.dshpet.android.voice.core.VoiceState.Failed -> b.hide()
+            com.dshpet.android.voice.core.VoiceState.Idle -> b.hide()
+        }
+    }
     private fun stopVoiceInOverlay() {
         com.dshpet.android.voice.core.VoiceRuntime.stop()
         voiceLoop = null

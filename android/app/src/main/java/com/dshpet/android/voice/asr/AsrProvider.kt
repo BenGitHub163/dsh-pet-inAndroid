@@ -195,10 +195,10 @@ class SystemAsrProvider(
                     putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, preferOffline)
                     // 断句别太急：1200ms 会在你换气时就把句子切走，听感上就是"断断续续"。
                     // 2000ms 更接近真人对话的停顿，仍能在说完后 2 秒内出结果。
-                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L)
-                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1000L)
+                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 800L)
+                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 400L)
                     // 说完后不要立刻把音量判定为结束（部分引擎会因此截断最后一个字）
-                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L)
+                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 800L)
                 }
                 runCatching { r.cancel() }        // 清掉上一轮可能残留的会话
                 r.startListening(intent)
