@@ -176,20 +176,8 @@ open class PetOverlayService : Service() {
         @Volatile
         var petHidden = false
 
-        /** 实例号 → 服务类（Android 同一 Service 类只有一个对象，
-         *  多开必须用不同服务类隔离窗口/引擎状态） */
-        fun serviceClassFor(id: Int): Class<*> = when (id) {
-            1 -> PetOverlayService1::class.java
-            2 -> PetOverlayService2::class.java
-            3 -> PetOverlayService3::class.java
-            4 -> PetOverlayService4::class.java
-            5 -> PetOverlayService5::class.java
-            6 -> PetOverlayService6::class.java
-            7 -> PetOverlayService7::class.java
-            8 -> PetOverlayService8::class.java
-            9 -> PetOverlayService9::class.java
-            else -> PetOverlayService::class.java
-        }
+        fun serviceClassFor(id: Int): Class<out PetOverlayService> =
+            OVERLAY_SLOT_CLASSES.getOrElse(id) { PetOverlayService::class.java }
 
         fun intent(ctx: Context, instanceId: Int = 0): Intent =
             Intent(ctx, serviceClassFor(instanceId)).putExtra(EXTRA_INSTANCE, instanceId)
@@ -203,6 +191,7 @@ open class PetOverlayService : Service() {
          */
         fun ensureRunning(ctx: Context, instanceId: Int = 0, persist: Boolean = true): Boolean {
             return try {
+                if (persist) wantRunning = true
                 if (persist) ctx.startForegroundService(intent(ctx, instanceId))
                 else ctx.startService(intent(ctx, instanceId))
                 true
@@ -215,13 +204,18 @@ open class PetOverlayService : Service() {
         }
 
         fun stopAll(ctx: Context) {
+            wantRunning = false
+            runCatching { PetWatchdogJob.cancel(ctx) }
             synchronized(activeInstances) {
                 val ids = activeInstances.toList()
                 ids.forEach { ctx.stopService(intent(ctx, it)) }
             }
-            // 停掉所有服务类（含未在 activeInstances 中的）
             for (id in 0 until SLOT_COUNT) {
                 runCatching { ctx.stopService(intent(ctx, id)) }
+            }
+            val app = ctx.applicationContext
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                runCatching { PetConfig.get(app).setPetRunning(false) }
             }
         }
 

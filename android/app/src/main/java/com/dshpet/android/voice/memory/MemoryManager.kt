@@ -94,10 +94,7 @@ class MemoryExtractor(
         private const val TAG = "DshVoiceMemory"
 
         private val SYSTEM: String
-            get() = com.dshpet.android.prompt.PromptStore.text(
-                "memory_extractor",
-                "你是记忆提取器。只输出 JSON 数组，最多 3 项，没有就输出 []。",
-            )
+            get() = com.dshpet.android.prompt.PromptStore.text("memory_extractor")
     }
 }
 
@@ -254,13 +251,8 @@ class MemoryManager(
     fun promptBlock(items: List<MemoryItem>): String {
         if (items.isEmpty()) return ""
         val lines = items.take(4).joinToString("\n") { "- ${it.text}" }
-        return """
-            【关于用户的长期记忆（按相关度挑选）】
-            $lines
-
-            使用要求：只在和当前话题相关时自然带出，像老朋友记得那样顺口提一句；
-            不要逐条复述，不要说"根据我的记忆/记录显示"，不要主动罗列。
-        """.trimIndent()
+        return "【关于用户的长期记忆（按相关度挑选）】\n$lines\n\n" +
+            com.dshpet.android.prompt.PromptStore.text("memory_usage")
     }
 
     /** 一轮结束后异步抽取（同一个时刻只跑一个，避免并发写文件） */

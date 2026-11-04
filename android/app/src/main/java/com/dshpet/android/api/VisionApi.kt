@@ -49,10 +49,7 @@ class VisionApi(ctx: Context) {
 
     suspend fun observe(jpeg: ByteArray): String? = observe(listOf(jpeg))
 
-    private fun prompt(): String = PromptStore.text(
-        "vision_observe",
-        "你是情绪观察员。只输出一到两句客观观察，不评价长相、不猜身份。",
-    )
+    private fun prompt(): String = PromptStore.text("vision_observe")
 
     private companion object {
         const val TAG = "Dsh_VISION"

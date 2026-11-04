@@ -334,46 +334,37 @@ private fun GeneralTab(
     val hideRecents by cfg.flowBool("hide_from_recents", true).collectAsState(initial = true)
     val batteryOpt by cfg.flowBool("battery_optimization", false).collectAsState(initial = false)
 
-    // ---- 开机自启 = 用户意愿 + 系统「自启动白名单」真实权限 ----
-    // 系统白名单读不到时是 null（非 MIUI 系 / 隐藏 API 被拦），此时只能按用户意愿显示
     var autoStartGranted by remember { mutableStateOf<Boolean?>(null) }
-    /** 上一次同步给系统的接收器状态（避免每次 onResume 都写一次组件状态） */
     var receiverSynced by remember { mutableStateOf<Boolean?>(null) }
-    /** 本次进页面是否已经提醒过"系统没允许自启动"（避免每次 onResume 都弹） */
-    var autoStartWarned by remember { mutableStateOf(false) }
-    // key 里必须带 autoStartWant：DataStore 的 flow 首帧先给 initial=false，
-    // 只按 resumeTick 触发的话，等真值（比如 true）回流时不会再跑一次，接收器就会被误关掉。
+    // 回到前台就重查系统自启动权限，开关跟系统状态走。
     LaunchedEffect(resumeTick, autoStartWant) {
-        val g = com.dshpet.android.compat.autostart.AutoStartHelper.queryAutoStart(ctx)
+        val helper = com.dshpet.android.compat.autostart.AutoStartHelper
+        val g = helper.queryAutoStart(ctx)
         autoStartGranted = g
-        // 接收器只跟"用户开关"走：白名单没允许时系统本来就不会拉起我们，
-        // 但把接收器关掉反而会导致"后来在系统里授权了却永远收不到开机广播"。
-        val desired = autoStartWant
+        if (g == true && !autoStartWant) {
+            cfg.setAutoStart(true)
+        }
+        val desired = if (g == true) true else autoStartWant
         if (desired != receiverSynced) {
-            com.dshpet.android.compat.autostart.AutoStartHelper.setBootReceiverEnabled(ctx, desired)
+            helper.setBootReceiverEnabled(ctx, desired)
             receiverSynced = desired
         }
-        com.dshpet.android.util.AppLog.u("桌宠", "开机自启：开关=${if (autoStartWant) "开" else "关"}，系统白名单=${com.dshpet.android.compat.autostart.AutoStartHelper.grantedText(g)}")
-        // 开了开关但系统里没允许：每次进设置页提醒一次（MIUI 覆盖安装会把自启动重置掉）
-        if (autoStartWant && g == false && !autoStartWarned) {
-            autoStartWarned = true
-            android.widget.Toast.makeText(
-                ctx,
-                "系统还没允许「小肥鱼」自启动（小米覆盖安装后常被重置），点下面的「去设置」打开",
-                android.widget.Toast.LENGTH_LONG,
-            ).show()
-        }
+        com.dshpet.android.util.AppLog.u(
+            "桌宠",
+            "开机自启：用户=${if (autoStartWant) "开" else "关"}，系统=${helper.grantedText(g)}",
+        )
     }
-    // **开关只表示"用户意愿"**，不再被系统状态压回去：
-    // 之前 `want && granted` 的写法会导致"在系统里授权了、但查询仍返回 ignore 时开关自动弹回"，
-    // 用户看到的就是"点了没反应"（真机上 MIUI 覆盖安装也会把 op 10021 重置成 ignore）。
-    // 系统真实状态改到下面一行文字里显示，两者分开。
-    val autoStartShown = autoStartWant
+    val autoStartShown = com.dshpet.android.compat.autostart.AutoStartHelper.switchChecked(
+        autoStartWant, autoStartGranted,
+    )
 
     val overlayLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         val granted = Settings.canDrawOverlays(ctx)
         scope.launch { cfg.setOverlayPermission(granted) }
-        if (granted) PetOverlayService.ensureRunning(ctx)
+        if (granted) {
+            scope.launch { cfg.setPetRunning(true) }
+            PetOverlayService.ensureRunning(ctx)
+        }
     }
 
     // 悬浮窗授权 / 本页回到前台时：同步 launcher alias（接收器由上面的 LaunchedEffect 负责）
@@ -393,9 +384,11 @@ private fun GeneralTab(
                             )
                         }
                     } else {
+                        scope.launch { cfg.setPetRunning(true) }
                         PetOverlayService.ensureRunning(ctx)
                     }
                 } else {
+                    scope.launch { cfg.setPetRunning(false) }
                     PetOverlayService.stopAll(ctx)
                 }
             }
@@ -410,48 +403,23 @@ private fun GeneralTab(
             )
         }
         Section("后台行为") {
-            // 开关 = 用户意愿 且 系统「自启动白名单」允许；没权限时点它会被送去系统设置页
-            val needGuide = com.dshpet.android.compat.autostart.AutoStartHelper.needsGuide()
             SwitchRow(
                 "开机自启",
-                buildString {
-                    append("重启手机后自动显示桌宠｜系统自启：")
-                    append(com.dshpet.android.compat.autostart.AutoStartHelper.grantedText(autoStartGranted))
-                },
+                com.dshpet.android.compat.autostart.AutoStartHelper.statusLine(autoStartWant, autoStartGranted),
                 autoStartShown,
             ) { on ->
-                if (on) {
-                    scope.launch { cfg.setAutoStart(true) }
-                    val g = autoStartGranted
-                    // 接收器不因"白名单未允许"而关掉：否则以后在系统里授权了也收不到开机广播
-                    com.dshpet.android.compat.autostart.AutoStartHelper.setBootReceiverEnabled(ctx, true)
-                    if (g == false) {
-                        // 系统没允许：先把人送去「自启动管理」，回来后 onResume 会重新查权限，
-                        // 授权成功那一下开关才会真的变成"开"（没给权限就保持原样）
-                        android.widget.Toast.makeText(
-                            ctx, "先去系统里把「小肥鱼」的自启动打开，回来这里会自动变成开",
-                            android.widget.Toast.LENGTH_LONG,
-                        ).show()
-                        com.dshpet.android.compat.autostart.AutoStartHelper.guide(ctx)
-                    }
-                } else {
-                    scope.launch { cfg.setAutoStart(false) }
-                    com.dshpet.android.compat.autostart.AutoStartHelper.setBootReceiverEnabled(ctx, false)
-                }
-            }
-            // 小米/红米等 ROM 默认拦第三方自启：光开上面的开关没用，系统压根不会拉起本应用
-            if (needGuide) {
-                SettingRow(
-                    "系统自启动白名单",
-                    "${com.dshpet.android.compat.autostart.AutoStartHelper.romName()} 当前：${
-                        com.dshpet.android.compat.autostart.AutoStartHelper.grantedText(autoStartGranted)
-                    }。未允许时系统不会拉起本应用；覆盖安装后这一项常被重置，需要重新打开",
-                    trailing = {
-                        TextButton(onClick = { com.dshpet.android.compat.autostart.AutoStartHelper.guide(ctx) }) {
-                            Text("去设置")
-                        }
-                    },
+                scope.launch { cfg.setAutoStart(on) }
+                val jumped = com.dshpet.android.compat.autostart.AutoStartHelper.applyUserChoice(
+                    ctx, on, autoStartGranted,
                 )
+                if (jumped) {
+                    android.widget.Toast.makeText(
+                        ctx,
+                        if (on) "请在系统页允许「小肥鱼」自启动，返回后开关会更新"
+                        else "请在系统页关闭「小肥鱼」自启动，返回后开关会更新",
+                        android.widget.Toast.LENGTH_LONG,
+                    ).show()
+                }
             }
             SwitchRow(
                 "隐藏后台",
@@ -1194,9 +1162,9 @@ private fun ColorSliderRow(label: String, value: Float, onChange: (Float) -> Uni
 private fun AiTab(ctx: android.content.Context, cfg: PetConfig, scope: kotlinx.coroutines.CoroutineScope) {
     val agentLink by cfg.flowBool("agent_link_enabled", false).collectAsState(initial = false)
     val name by cfg.flowString("chat_provider_name", "DeepSeek").collectAsState(initial = "DeepSeek")
-    val baseUrl by cfg.flowString("chat_base_url", com.dshpet.android.api.ApiDefaults.CHAT_BASE_URL).collectAsState(initial = com.dshpet.android.api.ApiDefaults.CHAT_BASE_URL)
-    val chatPath by cfg.flowString("chat_chat_path", com.dshpet.android.api.ApiDefaults.CHAT_PATH).collectAsState(initial = com.dshpet.android.api.ApiDefaults.CHAT_PATH)
-    val model by cfg.flowString("chat_model", com.dshpet.android.api.ApiDefaults.CHAT_MODEL).collectAsState(initial = com.dshpet.android.api.ApiDefaults.CHAT_MODEL)
+    val baseUrl by cfg.flowString("chat_base_url", com.dshpet.android.api.DeepseekApi.CHAT_BASE_URL).collectAsState(initial = com.dshpet.android.api.DeepseekApi.CHAT_BASE_URL)
+    val chatPath by cfg.flowString("chat_chat_path", com.dshpet.android.api.DeepseekApi.CHAT_PATH).collectAsState(initial = com.dshpet.android.api.DeepseekApi.CHAT_PATH)
+    val model by cfg.flowString("chat_model", com.dshpet.android.api.DeepseekApi.CHAT_MODEL).collectAsState(initial = com.dshpet.android.api.DeepseekApi.CHAT_MODEL)
     val apiKey by cfg.flowString("chat_api_key", com.dshpet.android.data.KeyFactory.defaults().deepseek).collectAsState(initial = com.dshpet.android.data.KeyFactory.defaults().deepseek)
     val temperature by cfg.flowDouble("chat_temperature", 0.7).collectAsState(initial = 0.7)
     val maxTokens by cfg.flowInt("chat_max_tokens", 2048).collectAsState(initial = 2048)

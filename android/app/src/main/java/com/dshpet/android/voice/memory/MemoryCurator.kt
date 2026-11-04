@@ -186,9 +186,6 @@ class MemoryCurator(
         private const val MAX_SEND = 60
 
         private val PROMPT: String
-            get() = com.dshpet.android.prompt.PromptStore.text(
-                "memory_curator",
-                "你是记忆整理员。只输出 JSON 数组，操作只有 update/merge/delete，最多 8 条。",
-            )
+            get() = com.dshpet.android.prompt.PromptStore.text("memory_curator")
     }
 }

@@ -17,6 +17,10 @@ import org.json.JSONObject
  */
 object DeepseekApi {
 
+    const val CHAT_BASE_URL = "https://api.deepseek.com"
+    const val CHAT_PATH = "/v1/chat/completions"
+    const val CHAT_MODEL = "deepseek-flash"
+
     data class ChatReq(
         val baseUrl: String,
         val chatPath: String,
@@ -27,7 +31,7 @@ object DeepseekApi {
         val verifySsl: Boolean,
     )
 
-    fun normalizeEndpoint(baseUrl: String, chatPath: String = "/v1/chat/completions"): String {
+    fun normalizeEndpoint(baseUrl: String, chatPath: String = CHAT_PATH): String {
         val base = baseUrl.trim().trimEnd('/')
         val path = chatPath.trim().let { if (it.startsWith("/")) it else "/$it" }
         if (base.endsWith("/chat/completions")) return base

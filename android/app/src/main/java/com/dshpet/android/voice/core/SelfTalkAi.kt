@@ -25,10 +25,7 @@ object SelfTalkAi {
      * 注意别写成"请帮我写一句…"这种任务口吻，模型容易输出解释；直接描述角色与约束。
      */
     private val SYSTEM: String
-        get() = com.dshpet.android.prompt.PromptStore.text(
-            "selftalk",
-            "你是桌宠，现在自言自语一句，不超过 18 字，只输出这句话。",
-        )
+        get() = com.dshpet.android.prompt.PromptStore.text("selftalk")
 
 
     private const val MAX_CHARS = 24

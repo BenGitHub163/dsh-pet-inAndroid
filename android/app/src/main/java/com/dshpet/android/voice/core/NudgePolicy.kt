@@ -31,14 +31,13 @@ object NudgePolicy {
     /** 四套口吻（**外置**：assets/prompts/nudge_*.txt） */
     val templates: List<Template>
         get() = listOf(
-            Template("clingy", "黏人撒娇", p("nudge_clingy", "轻声问一句他还在不在，不超过 18 字。")),
-            Template("caring", "温柔关心", p("nudge_caring", "用一句话关心他，不施压，不超过 20 字。")),
-            Template("teasing", "俏皮吐槽", p("nudge_teasing", "俏皮地吐槽一句他的沉默，不超过 18 字。")),
-            Template("curious", "主动找话题", p("nudge_curious", "主动问一个具体的小问题，不超过 22 字。")),
+            Template("clingy", "黏人撒娇", p("nudge_clingy")),
+            Template("caring", "温柔关心", p("nudge_caring")),
+            Template("teasing", "俏皮吐槽", p("nudge_teasing")),
+            Template("curious", "主动找话题", p("nudge_curious")),
         )
 
-    private fun p(key: String, fallback: String): String =
-        com.dshpet.android.prompt.PromptStore.text(key, fallback)
+    private fun p(key: String): String = com.dshpet.android.prompt.PromptStore.text(key)
     /** 第 n 次主动开口用哪套（循环轮换，保证四种口吻都会被用到） */
     fun templateFor(nudgeIndex: Int): Template =
         templates[nudgeIndex.coerceAtLeast(0) % templates.size]
@@ -76,8 +75,5 @@ object NudgePolicy {
     /** 连续多次没人理之后说的收尾话术（不走模型，保证一定会说） */
     /** 收尾语（**外置**：assets/prompts/nudge_farewell.txt） */
     val FAREWELL: String
-        get() = com.dshpet.android.prompt.PromptStore.text(
-            "nudge_farewell",
-            "那我先安静待着，需要我的时候喊我一声就好。",
-        )
+        get() = com.dshpet.android.prompt.PromptStore.text("nudge_farewell")
 }

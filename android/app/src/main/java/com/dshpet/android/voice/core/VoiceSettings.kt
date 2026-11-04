@@ -15,7 +15,6 @@ import kotlinx.coroutines.launch
  */
 data class VoiceSettings(
     val doubaoKey: String = com.dshpet.android.data.KeyFactory.defaults().doubao,
-    /** Breeze key：默认取构建期内置值（通常为空，由用户在「语音 API」页填） */
     val breezeKey: String = com.dshpet.android.data.KeyFactory.defaults().breeze,
     val deepseekKey: String = com.dshpet.android.data.KeyFactory.defaults().deepseek,
     val voiceId: String = DEFAULT_VOICE,

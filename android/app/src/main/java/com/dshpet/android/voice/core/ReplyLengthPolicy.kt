@@ -38,15 +38,9 @@ object ReplyLengthPolicy {
 
     /** 写进 system 的一句话（模型据此决定说多长） */
     fun systemLine(length: ReplyLength): String = when (length) {
-        ReplyLength.SHORT ->
-            com.dshpet.android.prompt.PromptStore.text("reply_short", "【本轮期望：简短】一两句话就够，不超过 40 字，说完就停。")
-        ReplyLength.NORMAL ->
-            com.dshpet.android.prompt.PromptStore.text("reply_normal", "【本轮期望：适中】2~4 句，不超过 90 字；抓住最关键的一层说，别铺开。")
-        ReplyLength.DETAILED ->
-            com.dshpet.android.prompt.PromptStore.text(
-                "reply_detailed",
-                "【本轮期望：详细】给出实质内容（原因/步骤/建议），可以说 5~8 句，每句要短，禁止列表和 markdown。",
-            )
+        ReplyLength.SHORT -> com.dshpet.android.prompt.PromptStore.text("reply_short")
+        ReplyLength.NORMAL -> com.dshpet.android.prompt.PromptStore.text("reply_normal")
+        ReplyLength.DETAILED -> com.dshpet.android.prompt.PromptStore.text("reply_detailed")
     }
 
     fun maxTokens(length: ReplyLength): Int = when (length) {

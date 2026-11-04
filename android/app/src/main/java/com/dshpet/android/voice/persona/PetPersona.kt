@@ -209,10 +209,7 @@ object PersonaPrompts {
         append("\n【语气示范】\n").append(persona.example).append('\n')
         append("\n【").append(mood.describe()).append("】\n")
         append(
-            com.dshpet.android.prompt.PromptStore.text(
-                "persona_rules",
-                "行为要求：情绪要能被听出来；用户情绪差时先接住再给一句轻建议；不要虚报情绪。",
-            ) +
+            com.dshpet.android.prompt.PromptStore.text("persona_rules") +
             persona.postHistory
         )
     }

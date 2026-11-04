@@ -201,7 +201,7 @@ class MemoryConsolidator(
         val dialog = turns.takeLast(10).joinToString("\n") { "${it.role}：${it.content.take(200)}" }
         val text = collect(
             listOf(
-                ChatApi.Msg("system", SUMMARIZE_PROMPT),
+                ChatApi.Msg("system", summarizePrompt()),
                 ChatApi.Msg("user", dialog),
             )
         ) ?: return null
@@ -230,7 +230,7 @@ class MemoryConsolidator(
     suspend fun promote(segment: MemorySegment): List<MemoryItem> {
         val text = collect(
             listOf(
-                ChatApi.Msg("system", PROMOTE_PROMPT),
+                ChatApi.Msg("system", promotePrompt()),
                 ChatApi.Msg("user", "话题：${segment.title}\n摘要：${segment.summary}"),
             )
         ) ?: return emptyList()
@@ -277,19 +277,7 @@ class MemoryConsolidator(
     private companion object {
         const val TAG = "DshVoiceSeg"
 
-        val SUMMARIZE_PROMPT = """
-            你是「话题整理器」。把下面几轮对话压成一段可复用的话题记忆。
-            只输出 JSON，不要任何解释、不要代码块：
-            {"title":"8~14 字的话题标题","summary":"2~3 句、不超过 80 字：聊了什么、用户的结论或偏好、有没有待办","keywords":["词1","词2","词3"]}
-            要求：写事实，不写寒暄；不要出现"用户说"这种句式堆砌；没有实质内容就输出 {}。
-        """.trimIndent()
-
-        val PROMOTE_PROMPT = """
-            从下面这段话题记忆里，提炼值得长期记住的用户信息（稳定偏好 / 习惯 / 事实 / 有日期的计划）。
-            只提取用户本人的，不要助手的话，不要临时情绪。
-            只输出 JSON 数组，最多 3 项，不要解释：
-            [{"type":"preference","text":"用户……","keywords":["词1","词2"]}]
-            没有就输出 []。
-        """.trimIndent()
+        fun summarizePrompt() = com.dshpet.android.prompt.PromptStore.text("memory_summarize")
+        fun promotePrompt() = com.dshpet.android.prompt.PromptStore.text("memory_promote")
     }
 }

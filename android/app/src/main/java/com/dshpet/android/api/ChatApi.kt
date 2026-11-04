@@ -16,11 +16,11 @@ import kotlin.coroutines.resume
 class ChatApi(@Suppress("unused") private val ctx: Context) {
 
     companion object {
-        const val DEFAULT_BASE_URL = ApiDefaults.CHAT_BASE_URL
-        const val DEFAULT_PATH = ApiDefaults.CHAT_PATH
-        const val DEFAULT_MODEL = ApiDefaults.CHAT_MODEL
+        const val DEFAULT_BASE_URL = DeepseekApi.CHAT_BASE_URL
+        const val DEFAULT_PATH = DeepseekApi.CHAT_PATH
+        const val DEFAULT_MODEL = DeepseekApi.CHAT_MODEL
 
-        fun normalizeEndpoint(baseUrl: String, chatPath: String = "/v1/chat/completions"): String =
+        fun normalizeEndpoint(baseUrl: String, chatPath: String = DeepseekApi.CHAT_PATH): String =
             DeepseekApi.normalizeEndpoint(baseUrl, chatPath)
     }
 

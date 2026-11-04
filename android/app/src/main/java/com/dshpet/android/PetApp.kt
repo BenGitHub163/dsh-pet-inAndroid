@@ -91,7 +91,7 @@ class PetApp : Application() {
                     com.dshpet.android.compat.autostart.AutoStartHelper.grantedText(autoStartGranted)
                 }",
             )
-            if (autoStartWant && cfg.overlayPermissionGranted()) {
+            if (cfg.petRunning() && cfg.overlayPermissionGranted()) {
                 PetOverlayService.ensureRunning(this@PetApp, persist = false)
             }
         }
