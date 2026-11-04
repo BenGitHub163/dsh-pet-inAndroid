@@ -155,7 +155,7 @@ class TtsApi(
     }
 
     /** 打断：立刻断掉底层连接 */
-    fun cancel() {
+    override fun cancel() {
         activeCall.getAndSet(null)?.cancel()
     }
 
